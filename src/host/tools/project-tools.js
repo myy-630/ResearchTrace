@@ -1,6 +1,6 @@
 import { getProjectState, initializeProject } from '../project/project-service.js';
 
-function workspaceRoot(exec, workspaceRegistry) {
+export function workspaceRoot(exec, workspaceRegistry) {
   const cwd = exec.agent?.session?.header?.cwd;
   if (!cwd) throw new Error('This Harness session has no workspace directory');
   return workspaceRegistry.resolveByPath(cwd).then((workspace) => {

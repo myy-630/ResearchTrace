@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 3;
 
 const migrations = [
   {
@@ -130,6 +130,29 @@ const migrations = [
         recommendation TEXT NOT NULL
       );
       CREATE INDEX audit_findings_session ON audit_findings(audit_session_id);
+    `,
+  },
+  {
+    version: 2,
+    sql: `
+      ALTER TABLE run_details ADD COLUMN git_untracked_json TEXT CHECK (git_untracked_json IS NULL OR json_valid(git_untracked_json));
+      ALTER TABLE run_details ADD COLUMN config_path TEXT;
+      ALTER TABLE run_details ADD COLUMN config_hash TEXT;
+      ALTER TABLE run_details ADD COLUMN metrics_status TEXT NOT NULL DEFAULT 'missing' CHECK (metrics_status IN ('missing', 'collected'));
+      ALTER TABLE run_details ADD COLUMN error_message TEXT;
+      ALTER TABLE run_details ADD COLUMN snapshot_manifest_path TEXT;
+      ALTER TABLE run_details ADD COLUMN dataset_name TEXT;
+      ALTER TABLE run_details ADD COLUMN split_path TEXT;
+      ALTER TABLE run_details ADD COLUMN split_hash TEXT;
+      CREATE INDEX run_details_execution_status ON run_details(execution_status);
+      UPDATE projects SET schema_version = 2;
+    `,
+  },
+  {
+    version: 3,
+    sql: `
+      ALTER TABLE run_details ADD COLUMN config_source TEXT;
+      UPDATE projects SET schema_version = 3;
     `,
   },
 ];

@@ -50,6 +50,20 @@ function openDatabase(databasePath) {
   }
 }
 
+export function openProjectDatabase(rootPath) {
+  const { root, dataDir, databasePath } = pathsFor(rootPath);
+  if (!assertSafeDataDir(dataDir, false) || !existsSync(databasePath)) {
+    throw new Error('ResearchTrace is not initialized in this workspace');
+  }
+  const db = openDatabase(databasePath);
+  const state = projectState(db, root, databasePath);
+  if (!state.initialized) {
+    db.close();
+    throw new Error('ResearchTrace project record is missing');
+  }
+  return { db, root, dataDir, databasePath, project: state.project };
+}
+
 function projectState(db, root, databasePath) {
   const row = db.prepare('SELECT * FROM projects LIMIT 1').get();
   if (!row) return { initialized: false, workspaceRoot: root };

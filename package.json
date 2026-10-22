@@ -13,6 +13,7 @@
   "files": [
     "index.js",
     "src/**/*.js",
+    "vendor/yaml",
     "cordis.patch.yml",
     "locale/*.json",
     "icon.svg"

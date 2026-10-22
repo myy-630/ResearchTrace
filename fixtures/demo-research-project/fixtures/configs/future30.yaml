@@ -1,0 +1,9 @@
+method: Future30
+seed: 7
+learning_rate: 0.0001
+history_window: 20
+future_window: 30
+dataset:
+  name: AF-demo
+  split_strategy: patient-level
+  split_path: fixtures/splits/patients.csv

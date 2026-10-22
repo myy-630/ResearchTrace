@@ -15,6 +15,7 @@ test('Host registers authenticated BFF route and project tools on Harness servic
       connection: { fetch: { register(route) { routes.push(route); return () => {}; } } },
       workspaceRegistry: {
         get(id) { return id === 'workspace-1' ? { path: root } : undefined; },
+        list() { return []; },
         async resolveByPath(path) { return path === root ? { path: root } : undefined; },
       },
       tools: { register(tool) { tools.push(tool); return () => {}; } },
@@ -22,10 +23,10 @@ test('Host registers authenticated BFF route and project tools on Harness servic
     };
     assert.deepEqual(hostInject, ['connection', 'workspaceRegistry', 'tools']);
     hostApply(ctx);
-    assert.equal(routes.length, 1);
+    assert.equal(routes.length, 2);
     assert.equal(routes[0].path, '/api/researchtrace/project');
     assert.deepEqual(tools.map((tool) => tool.name), [
-      'researchtrace_init_project', 'researchtrace_get_project_state',
+      'researchtrace_init_project', 'researchtrace_get_project_state', 'researchtrace_run_experiment',
     ]);
     const request = (action, workspaceId = 'workspace-1') => new Request('http://localhost/api/researchtrace/project', {
       method: 'POST', headers: { 'content-type': 'application/json' },
