@@ -126,6 +126,14 @@ function inspectClaim(root, claim, links, rows, nodes, tolerance) {
       'Trace the claim and confirm the intended run before relying on this result.'));
     return findings;
   }
+  if (claim.type === 'statistical' && !run) {
+    findings.push(finding('TRACE_INCOMPLETE', 'warning',
+      'Statistical result has no confirmed run evidence', claim, null,
+      { candidateRunIds: links.filter((link) => link.status === 'candidate')
+        .map((link) => link.run_node_id), reportedRepetitions: facts.repetitions ?? null },
+      'Trace the statistic to an intended run and verify the complete seed cohort.'));
+    return findings;
+  }
   if (!run) return findings;
 
   // A. The recorded metric is the sole numerical source of truth.

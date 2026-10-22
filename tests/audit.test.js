@@ -90,3 +90,22 @@ test('missing confirmation and incomplete provenance yield warnings, not invente
     assert.deepEqual(evidence.experimentEvidence.missing, ['config', 'Git commit', 'dataset/split']);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test('an unlinked multi-seed statistic is reported as incomplete evidence', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'researchtrace-audit-statistic-'));
+  try {
+    const fixture = await seedAuditScenario(root);
+    const statisticalClaimId = fixture.claimIds[3];
+    const { db } = openProjectDatabase(root);
+    try {
+      db.prepare('DELETE FROM claim_run_links WHERE claim_id = ?').run(statisticalClaimId);
+      db.prepare("UPDATE claims SET status = 'unmatched' WHERE id = ?").run(statisticalClaimId);
+    } finally { db.close(); }
+    const report = runAudit(root, fixture.documentId);
+    const items = report.findings.filter((item) => item.claimId === statisticalClaimId);
+    assert.deepEqual(items.map((item) => [item.ruleId, item.severity]),
+      [['TRACE_INCOMPLETE', 'warning']]);
+    assert.equal(items[0].experimentEvidence.reportedRepetitions, 3);
+    assert.equal(items.some((item) => item.ruleId === 'MEAN_MISMATCH'), false);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
