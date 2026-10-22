@@ -1,0 +1,4 @@
+- insert:
+    - id: researchtrace
+      name: '@local/researchtrace'
+      config: {}

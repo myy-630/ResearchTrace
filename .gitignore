@@ -1,0 +1,6 @@
+.DS_Store
+.dsh-test-home/
+.researchtrace/
+node_modules/
+.pnpm-store/
+*.tgz
