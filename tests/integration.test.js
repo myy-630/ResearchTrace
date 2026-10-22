@@ -67,25 +67,47 @@ test('Client registers a real right Sidebar tab type and keyed body', async () =
     assert.equal(module.id, '@local/researchtrace');
     const plugin = module.factory((name) => {
       assert.equal(name, 'react');
-      return { createElement() {} };
+      return { createElement(type, props, ...children) { return { type, props: props ?? {}, children }; } };
     });
     const types = [];
     const entries = [];
     const ctx = {
       locale: { register() { return () => {}; }, bind() { return (key) => key; } },
       sidebarRightTabs: { register(definition) { types.push(definition); return () => {}; } },
+      sidebarRight: { openTab(kind, options) { opened.push({ kind, options }); } },
       slots: {
         inject(_name, register) { register(); return () => {}; },
         register(options, body) { entries.push({ options, body }); return () => {}; },
       },
       effect(register) { register(); },
     };
+    const opened = [];
     plugin.apply(ctx);
     assert.equal(types[0].kind, 'researchtrace');
     assert.equal(types[0].guide[0].id, 'project');
     assert.equal(entries[0].options.name, 'sidebar.right.pane.tab');
     assert.equal(entries[0].options.key, types[0].id);
     assert.equal(typeof entries[0].body, 'function');
+    assert.equal(entries.filter((entry) => entry.options.name === 'tool.call.toolview').length, 7);
+    assert.deepEqual(plugin.inject, ['slots', 'sidebarRightTabs', 'sidebarRight', 'locale']);
+    const samples = [
+      ['researchtrace_run_experiment', { id: 'run-1' }, { view: 'detail', runId: 'run-1', nodeId: 'run-1' }],
+      ['researchtrace_parse_document', { document: { id: 'paper-1' } }, { view: 'detail', documentId: 'paper-1' }],
+      ['researchtrace_trace_claim', { claim: { id: 'claim-1', documentId: 'paper-1' } },
+        { view: 'detail', documentId: 'paper-1', claimId: 'claim-1' }],
+      ['researchtrace_run_audit', { id: 'audit-1', documentId: 'paper-1' },
+        { view: 'audit', documentId: 'paper-1', auditId: 'audit-1' }],
+    ];
+    for (const [name, result, expected] of samples) {
+      const entry = entries.find((item) => item.options.key === name);
+      const card = entry.body({ phase: 'result', toolName: name,
+        block: { content: [{ type: 'text', text: JSON.stringify(result) }] },
+        sidebarRight: ctx.sidebarRight, t: (key) => key });
+      const button = card.children.find((child) => child?.type === 'button');
+      assert.equal(button.children[0], 'openSidebar');
+      button.props.onClick();
+      assert.deepEqual(opened.at(-1), { kind: 'researchtrace', options: { params: expected } });
+    }
   } finally {
     globalThis.window = previousWindow;
   }
