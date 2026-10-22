@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 const migrations = [
   {
@@ -153,6 +153,13 @@ const migrations = [
     sql: `
       ALTER TABLE run_details ADD COLUMN config_source TEXT;
       UPDATE projects SET schema_version = 3;
+    `,
+  },
+  {
+    version: 4,
+    sql: `
+      ALTER TABLE documents ADD COLUMN parser_version TEXT;
+      UPDATE projects SET schema_version = 4;
     `,
   },
 ];

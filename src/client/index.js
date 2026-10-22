@@ -26,6 +26,8 @@ window.__ModuleLoader__.load({
         archive: 'Archive', restore: 'Restore', primary: 'Set primary',
         motivation: 'Motivation', summary: 'Summary', childRuns: 'Related runs',
         decisions: 'Decisions',
+        papers: 'Papers', noPapers: 'No paper documents parsed yet.', claims: 'Claims',
+        noClaims: 'No claims extracted.', source: 'Source location',
       },
       zh: {
         title: 'ResearchTrace',
@@ -46,6 +48,8 @@ window.__ModuleLoader__.load({
         archive: '归档', restore: '恢复', primary: '设为主路线',
         motivation: '动机', summary: '摘要', childRuns: '相关实验',
         decisions: '科研决策',
+        papers: '论文文档', noPapers: '尚未解析论文文档。', claims: '论文主张',
+        noClaims: '尚无已抽取主张。', source: '原文位置',
       },
     };
     const panelStyle = {
@@ -87,6 +91,8 @@ window.__ModuleLoader__.load({
       callApi('/api/researchtrace/tree', { action, workspaceId, ...payload }, signal);
     const callDecision = (action, workspaceId, payload = {}, signal) =>
       callApi('/api/researchtrace/decisions', { action, workspaceId, ...payload }, signal);
+    const callPaper = (action, workspaceId, payload = {}, signal) =>
+      callApi('/api/researchtrace/paper', { action, workspaceId, ...payload }, signal);
 
     function facts(label, value) {
       return h('div', { style: { marginTop: '10px' } },
@@ -95,7 +101,7 @@ window.__ModuleLoader__.load({
           typeof value === 'string' ? value : JSON.stringify(value, null, 2)));
     }
 
-    function ResearchTraceBody({ sessionId, useSessions, useWorkspaces, t, useTabInfo, loadProject, loadRuns, callTree, callDecision }) {
+    function ResearchTraceBody({ sessionId, useSessions, useWorkspaces, t, useTabInfo, loadProject, loadRuns, callTree, callDecision, callPaper }) {
       const { tab } = useTabInfo();
       const cwd = useSessions((sessions) => sessions.byId[sessionId]?.cwd);
       const workspaceId = useWorkspaces((workspaces) => {
@@ -112,6 +118,9 @@ window.__ModuleLoader__.load({
       const [nodeDetail, setNodeDetail] = React.useState(null);
       const [expanded, setExpanded] = React.useState({});
       const [treeError, setTreeError] = React.useState(null);
+      const [documents, setDocuments] = React.useState([]);
+      const [selectedDocumentId, setSelectedDocumentId] = React.useState(null);
+      const [claims, setClaims] = React.useState([]);
 
       React.useEffect(() => {
         if (!workspaceId) {
@@ -173,6 +182,29 @@ window.__ModuleLoader__.load({
           .catch((error) => { if (active) setTreeError(String(error)); });
         return () => { active = false; };
       }, [workspaceId, selectedNodeId, tree, callTree]);
+
+      React.useEffect(() => {
+        if (!workspaceId || state.kind !== 'ready' || !state.value.initialized) {
+          setDocuments([]);
+          return;
+        }
+        let active = true;
+        const refresh = () => callPaper('list', workspaceId)
+          .then(({ value }) => { if (active) setDocuments(value); })
+          .catch((error) => { if (active) setTreeError(String(error)); });
+        refresh();
+        const timer = setInterval(refresh, 5000);
+        return () => { active = false; clearInterval(timer); };
+      }, [workspaceId, state.kind, state.value?.initialized, callPaper]);
+
+      React.useEffect(() => {
+        if (!workspaceId || !selectedDocumentId) { setClaims([]); return; }
+        let active = true;
+        callPaper('claims', workspaceId, { documentId: selectedDocumentId })
+          .then(({ value }) => { if (active) setClaims(value); })
+          .catch((error) => { if (active) setTreeError(String(error)); });
+        return () => { active = false; };
+      }, [workspaceId, selectedDocumentId, documents, callPaper]);
 
       const treeAction = (action, payload) => (action === 'primary' || action === 'archive' || action === 'restore'
         ? callDecision('record', workspaceId, { decision: {
@@ -267,7 +299,24 @@ window.__ModuleLoader__.load({
         facts(t('git'), runDetail.git),
         facts(t('dataset'), runDetail.dataset),
         facts(t('metrics'), runDetail.metrics ?? t('metricsMissing')),
-        facts(t('assets'), runDetail.assets)));
+        facts(t('assets'), runDetail.assets)),
+        h('h3', { style: { margin: '20px 0 8px', fontSize: '13px' } }, t('papers')),
+        documents.length ? h('ul', { style: { listStyle: 'none', padding: 0 } },
+          ...documents.map((document) => h('li', { key: document.id, style: { marginBottom: '6px' } },
+            h('button', { type: 'button', style: { ...buttonStyle, width: '100%', textAlign: 'left' },
+              onClick: () => setSelectedDocumentId(document.id) },
+            `${document.path.split('/').at(-1)} · ${document.claimCount} ${t('claims')}`))))
+          : h('p', { style: secondaryStyle }, t('noPapers')),
+        selectedDocumentId && h('section', { 'aria-label': t('claims') },
+          h('h4', { style: { margin: '10px 0 6px' } }, t('claims')),
+          claims.length ? h('ul', { style: { listStyle: 'none', padding: 0 } },
+            ...claims.map((claim) => h('li', { key: claim.id,
+              style: { borderTop: '1px solid var(--dsw-alias-border-l3)', padding: '8px 0' } },
+              h('strong', null, `${claim.type} · ${claim.status}`),
+              h('p', { style: { margin: '4px 0' } }, claim.originalText),
+              facts(t('source'), claim.sourceLocation),
+              facts(t('summary'), claim.normalized))))
+            : h('p', { style: secondaryStyle }, t('noClaims'))));
       return h('section', { style: panelStyle, 'aria-label': t('title') },
         h('h2', { style: { fontSize: '15px', margin: '0 0 12px' } }, t('title')),
         content);
@@ -294,7 +343,7 @@ window.__ModuleLoader__.load({
           name: 'sidebar.right.pane.tab',
           key: ID,
           locale: NS,
-          inject: () => ({ loadProject: callProject, loadRuns, callTree, callDecision }),
+          inject: () => ({ loadProject: callProject, loadRuns, callTree, callDecision, callPaper }),
         }, ResearchTraceBody)), 'researchtrace: sidebar body');
       },
     };

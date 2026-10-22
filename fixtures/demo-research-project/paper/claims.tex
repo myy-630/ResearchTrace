@@ -1,0 +1,15 @@
+\documentclass{article}
+\begin{document}
+\section{AF Prediction}
+\subsection{Results}
+On AF-demo, Future30 improved AUPRC from 0.5490 with Recon-only to 0.5614.
+
+\subsection{Settings}
+Future30 used a 20-second history window, a 30-second future window, and learning rate 1e-4.
+
+\subsection{Data}
+AF-demo was split by patient into training and test sets.
+
+\subsection{Statistics}
+Across 5 random seeds, Future30 achieved mean AUPRC 0.5580 with standard deviation 0.0030.
+\end{document}

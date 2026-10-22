@@ -21,18 +21,20 @@ test('Host registers authenticated BFF route and project tools on Harness servic
       tools: { register(tool) { tools.push(tool); return () => {}; } },
       effect(register) { disposers.push(register()); },
     };
-    assert.deepEqual(hostInject, ['connection', 'workspaceRegistry', 'tools']);
+    assert.deepEqual(hostInject, ['connection', 'workspaceRegistry', 'tools', 'llm']);
     hostApply(ctx);
-    assert.equal(routes.length, 4);
+    assert.equal(routes.length, 5);
     assert.equal(routes[0].path, '/api/researchtrace/project');
     assert.equal(routes[2].path, '/api/researchtrace/tree');
     assert.equal(routes[3].path, '/api/researchtrace/decisions');
+    assert.equal(routes[4].path, '/api/researchtrace/paper');
     assert.deepEqual(tools.map((tool) => tool.name), [
       'researchtrace_init_project', 'researchtrace_get_project_state', 'researchtrace_run_experiment',
       'researchtrace_create_node', 'researchtrace_update_node', 'researchtrace_set_status',
       'researchtrace_set_primary', 'researchtrace_get_tree', 'researchtrace_get_node_detail',
       'researchtrace_restore_node',
       'researchtrace_search', 'researchtrace_record_decision', 'researchtrace_archive_node',
+      'researchtrace_parse_document', 'researchtrace_list_claims',
     ]);
     const request = (action, workspaceId = 'workspace-1') => new Request('http://localhost/api/researchtrace/project', {
       method: 'POST', headers: { 'content-type': 'application/json' },
