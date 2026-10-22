@@ -22,6 +22,9 @@ window.__ModuleLoader__.load({
         error: 'ResearchTrace could not load the project.',
         runs: 'Recent runs', noRuns: 'No experiments recorded yet.', metricsMissing: 'Metrics not collected',
         config: 'Config', git: 'Git', metrics: 'Metrics', assets: 'Assets', dataset: 'Dataset / split',
+        tree: 'Research tree', noNodes: 'No research nodes yet.', detail: 'Node detail',
+        archive: 'Archive', restore: 'Restore', primary: 'Set primary',
+        motivation: 'Motivation', summary: 'Summary', childRuns: 'Related runs',
       },
       zh: {
         title: 'ResearchTrace',
@@ -38,6 +41,9 @@ window.__ModuleLoader__.load({
         error: '无法读取 ResearchTrace 项目。',
         runs: '最近实验', noRuns: '尚未记录实验。', metricsMissing: '结果未收集',
         config: '配置', git: 'Git', metrics: '指标', assets: '产物', dataset: '数据 / 划分',
+        tree: '研究演化树', noNodes: '尚无研究节点。', detail: '节点详情',
+        archive: '归档', restore: '恢复', primary: '设为主路线',
+        motivation: '动机', summary: '摘要', childRuns: '相关实验',
       },
     };
     const panelStyle = {
@@ -75,6 +81,8 @@ window.__ModuleLoader__.load({
       callApi('/api/researchtrace/project', { action, workspaceId }, signal);
     const loadRuns = (action, workspaceId, runId, signal) =>
       callApi('/api/researchtrace/runs', { action, workspaceId, runId }, signal);
+    const callTree = (action, workspaceId, payload = {}, signal) =>
+      callApi('/api/researchtrace/tree', { action, workspaceId, ...payload }, signal);
 
     function facts(label, value) {
       return h('div', { style: { marginTop: '10px' } },
@@ -83,7 +91,7 @@ window.__ModuleLoader__.load({
           typeof value === 'string' ? value : JSON.stringify(value, null, 2)));
     }
 
-    function ResearchTraceBody({ sessionId, useSessions, useWorkspaces, t, useTabInfo, loadProject, loadRuns }) {
+    function ResearchTraceBody({ sessionId, useSessions, useWorkspaces, t, useTabInfo, loadProject, loadRuns, callTree }) {
       const { tab } = useTabInfo();
       const cwd = useSessions((sessions) => sessions.byId[sessionId]?.cwd);
       const workspaceId = useWorkspaces((workspaces) => {
@@ -95,6 +103,11 @@ window.__ModuleLoader__.load({
       const [runs, setRuns] = React.useState([]);
       const [selectedRunId, setSelectedRunId] = React.useState(null);
       const [runDetail, setRunDetail] = React.useState(null);
+      const [tree, setTree] = React.useState({ roots: [], nodes: [] });
+      const [selectedNodeId, setSelectedNodeId] = React.useState(null);
+      const [nodeDetail, setNodeDetail] = React.useState(null);
+      const [expanded, setExpanded] = React.useState({});
+      const [treeError, setTreeError] = React.useState(null);
 
       React.useEffect(() => {
         if (!workspaceId) {
@@ -134,6 +147,53 @@ window.__ModuleLoader__.load({
         return () => { active = false; };
       }, [workspaceId, selectedRunId, runs, loadRuns]);
 
+      React.useEffect(() => {
+        if (!workspaceId || state.kind !== 'ready' || !state.value.initialized) {
+          setTree({ roots: [], nodes: [] });
+          return;
+        }
+        let active = true;
+        const refresh = () => callTree('tree', workspaceId)
+          .then(({ value }) => { if (active) { setTree(value); setTreeError(null); } })
+          .catch((error) => { if (active) setTreeError(String(error)); });
+        refresh();
+        const timer = setInterval(refresh, 3000);
+        return () => { active = false; clearInterval(timer); };
+      }, [workspaceId, state.kind, state.value?.initialized, callTree]);
+
+      React.useEffect(() => {
+        if (!workspaceId || !selectedNodeId) { setNodeDetail(null); return; }
+        let active = true;
+        callTree('detail', workspaceId, { nodeId: selectedNodeId })
+          .then(({ value }) => { if (active) setNodeDetail(value); })
+          .catch((error) => { if (active) setTreeError(String(error)); });
+        return () => { active = false; };
+      }, [workspaceId, selectedNodeId, tree, callTree]);
+
+      const treeAction = (action, payload) => callTree(action, workspaceId, payload)
+        .then(() => callTree('tree', workspaceId))
+        .then(({ value }) => { setTree(value); setTreeError(null); })
+        .catch((error) => setTreeError(String(error)));
+
+      function renderNode(node, depth = 0) {
+        const hasChildren = node.children.length > 0;
+        const open = expanded[node.id] ?? (node.type !== 'experiment_group');
+        const symbol = node.status === 'archived' ? '▣' : node.status === 'rejected' ? '✕'
+          : node.status === 'paused' ? '⏸' : node.isPrimary ? '★' : '•';
+        return h('li', { key: node.id, style: { listStyle: 'none', margin: '3px 0 3px 8px' } },
+          h('div', { style: { display: 'flex', alignItems: 'center', gap: '3px', opacity: node.defaultVisible ? 1 : 0.6 } },
+            hasChildren ? h('button', { type: 'button', style: { ...buttonStyle, padding: '1px 5px' },
+              'aria-label': `${open ? 'Collapse' : 'Expand'} ${node.name}`,
+              onClick: () => setExpanded((value) => ({ ...value, [node.id]: !open })) }, open ? '▾' : '▸')
+              : h('span', { style: { width: '20px' } }, ''),
+            h('button', { type: 'button', style: { ...buttonStyle, border: 'none', padding: '3px',
+              textAlign: 'left', background: selectedNodeId === node.id ? 'var(--dsw-alias-bg-layer-2)' : 'transparent' },
+              onClick: () => { setSelectedNodeId(node.id); setSelectedRunId(node.type === 'run' ? node.id : null); } },
+            `${symbol} ${node.name}${node.type === 'run' ? ` · ${runs.find((run) => run.id === node.id)?.status ?? 'run'}` : ''}`)),
+          hasChildren && open && h('ul', { style: { margin: 0, paddingLeft: `${depth ? 8 : 2}px` } },
+            ...node.children.map((child) => renderNode(child, depth + 1))));
+      }
+
       React.useEffect(() => tab.actions.bindCommands({
         refresh: () => {
           if (!workspaceId) return;
@@ -163,6 +223,25 @@ window.__ModuleLoader__.load({
         h('p', null, t('ready')),
         h('p', { style: secondaryStyle }, state.value.project.name),
         h('p', { style: { ...secondaryStyle, overflowWrap: 'anywhere' } }, `${t('database')}: ${state.value.databasePath}`),
+        h('h3', { style: { margin: '20px 0 8px', fontSize: '13px' } }, t('tree')),
+        treeError && h('p', { role: 'alert' }, treeError),
+        tree.roots.length ? h('ul', { style: { margin: 0, padding: 0 } },
+          ...tree.roots.map((node) => renderNode(node))) : h('p', { style: secondaryStyle }, t('noNodes')),
+        nodeDetail && h('section', { 'aria-label': t('detail'),
+          style: { borderTop: '1px solid var(--dsw-alias-border-l3)', marginTop: '12px', paddingTop: '8px' } },
+          h('strong', null, `${nodeDetail.node.name} · ${nodeDetail.node.status}${nodeDetail.node.isPrimary ? ' ★' : ''}`),
+          h('p', { style: secondaryStyle }, nodeDetail.lineage.map((part) => part.name).join(' / ')),
+          nodeDetail.node.motivation && facts(t('motivation'), nodeDetail.node.motivation),
+          nodeDetail.node.summary && facts(t('summary'), nodeDetail.node.summary),
+          nodeDetail.runs?.length > 0 && facts(t('childRuns'), nodeDetail.runs),
+          nodeDetail.node.type === 'method' && !nodeDetail.node.isPrimary &&
+            tree.nodes.find((node) => node.id === nodeDetail.node.id)?.defaultVisible &&
+            h('button', { type: 'button', style: buttonStyle,
+              onClick: () => treeAction('primary', { nodeId: nodeDetail.node.id }) }, t('primary')),
+          nodeDetail.node.type !== 'run' && h('button', { type: 'button', style: buttonStyle,
+            onClick: () => treeAction(nodeDetail.node.status === 'archived' ? 'restore' : 'status',
+              { nodeId: nodeDetail.node.id, status: 'archived' }) },
+          t(nodeDetail.node.status === 'archived' ? 'restore' : 'archive'))),
         h('h3', { style: { margin: '20px 0 8px', fontSize: '13px' } }, t('runs')),
         runs.length ? h('ul', { style: { listStyle: 'none', padding: 0 } }, ...runs.map((run) =>
           h('li', { key: run.id, style: { marginBottom: '6px' } },
@@ -204,7 +283,7 @@ window.__ModuleLoader__.load({
           name: 'sidebar.right.pane.tab',
           key: ID,
           locale: NS,
-          inject: () => ({ loadProject: callProject, loadRuns }),
+          inject: () => ({ loadProject: callProject, loadRuns, callTree }),
         }, ResearchTraceBody)), 'researchtrace: sidebar body');
       },
     };

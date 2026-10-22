@@ -82,6 +82,8 @@ export function registerExperimentTool(ctx) {
         intent: { type: 'string', description: 'Original user request, kept as experiment provenance.' },
         methodName: { type: 'string', description: 'Research method or route name.' },
         groupName: { type: 'string', description: 'Experiment group name; defaults to Experiments.' },
+        methodId: { type: 'string', description: 'Existing method node id when disambiguation is needed.' },
+        groupId: { type: 'string', description: 'Existing experiment group node id; takes precedence over methodName/groupName.' },
         runName: { type: 'string', description: 'Readable name for this single run.' },
         command: { type: 'string', description: 'Training command to execute via Harness bash permissions.' },
         workdir: { type: 'string', description: 'Working directory within the current Harness workspace.' },

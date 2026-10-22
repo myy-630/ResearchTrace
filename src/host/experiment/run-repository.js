@@ -27,6 +27,13 @@ function ensureNode(db, projectId, parentId, type, name) {
   return id;
 }
 
+function existingNode(db, projectId, id, type) {
+  const row = db.prepare('SELECT id, parent_id, type FROM worktree_nodes WHERE project_id = ? AND id = ?')
+    .get(projectId, id);
+  if (!row || row.type !== type) throw new Error(`Experiment ${type} not found: ${id}`);
+  return row;
+}
+
 function datasetFromConfig(root, config) {
   const values = config?.values ?? {};
   const raw = values.dataset ?? values.data ?? {};
@@ -69,9 +76,23 @@ export function createRun(rootPath, input) {
     const groupName = input.groupName?.trim() || 'Experiments';
     const runName = input.runName?.trim() || `${methodName} ${id.slice(0, 8)}`;
     transaction(db, () => {
-      const questionId = ensureNode(db, project.id, null, 'research_question', project.name);
-      const methodId = ensureNode(db, project.id, questionId, 'method', methodName);
-      const groupId = ensureNode(db, project.id, methodId, 'experiment_group', groupName);
+      let groupId;
+      if (input.groupId) {
+        groupId = existingNode(db, project.id, input.groupId, 'experiment_group').id;
+      } else {
+        let methodId = input.methodId ? existingNode(db, project.id, input.methodId, 'method').id : null;
+        if (!methodId) {
+          const matches = db.prepare(`SELECT id FROM worktree_nodes
+            WHERE project_id = ? AND type = 'method' AND name = ?`).all(project.id, methodName);
+          if (matches.length > 1) throw new Error(`Method name is ambiguous: ${methodName}; pass methodId`);
+          methodId = matches[0]?.id ?? null;
+        }
+        if (!methodId) {
+          const questionId = ensureNode(db, project.id, null, 'research_question', project.name);
+          methodId = ensureNode(db, project.id, questionId, 'method', methodName);
+        }
+        groupId = ensureNode(db, project.id, methodId, 'experiment_group', groupName);
+      }
       const timestamp = now();
       db.prepare(`INSERT INTO worktree_nodes
         (id, project_id, type, parent_id, name, status, created_at, updated_at)
