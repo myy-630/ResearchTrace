@@ -224,7 +224,13 @@ export function getNodeDetail(rootPath, id) {
         JOIN run_details d ON d.node_id = n.id ORDER BY n.created_at DESC LIMIT 30`).all(id)
         .map(({ metricsJson, ...run }) => ({ ...run, metrics: metricsJson ? JSON.parse(metricsJson) : null }))
       : [];
-    return { node, lineage, children, runs,
+    const decisions = db.prepare(`SELECT * FROM decisions WHERE node_id = ?
+      ORDER BY created_at DESC, id DESC LIMIT 30`).all(id).map((row) => ({
+      id: row.id, type: row.decision_type, rawUserText: row.raw_user_text,
+      summary: row.summary, reason: row.reason, alternativeRoute: row.alternative_route,
+      reopenCondition: row.reopen_condition, relatedRunIds: JSON.parse(row.related_run_ids_json),
+      createdAt: row.created_at }));
+    return { node, lineage, children, runs, decisions,
       run: node.type === 'run' ? getRunDetail(rootPath, id) : null };
   } finally { db.close(); }
 }

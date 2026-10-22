@@ -1,6 +1,7 @@
-import { createNode, getNodeDetail, getRetrievableTree, restoreNode, setNodeStatus, setPrimary,
+import { createNode, getNodeDetail, getRetrievableTree, setNodeStatus, setPrimary,
   updateNode } from '../tree/tree-service.js';
 import { workspaceRoot } from './project-tools.js';
+import { recordDecision } from '../decision/decision-service.js';
 
 const nodeProperties = {
   type: { type: 'string', enum: ['research_question', 'method', 'experiment_group'] },
@@ -25,7 +26,7 @@ export function registerTreeTools(ctx) {
     ['researchtrace_update_node', 'Update a research tree node name, parent, motivation, summary, or tags without moving user files.',
       { nodeId: { type: 'string' }, ...nodeProperties }, ['nodeId'],
       (root, { nodeId, ...changes }) => updateNode(root, nodeId, changes)],
-    ['researchtrace_set_status', 'Set active, paused, completed, rejected, or archived on a research node. Archived and rejected descendants are excluded from default retrieval.',
+    ['researchtrace_set_status', 'Set a simple research node lifecycle status. When the user gives a reason for rejection or archive, use researchtrace_record_decision or researchtrace_archive_node to preserve it.',
       { nodeId: { type: 'string' }, status: { type: 'string', enum: ['active', 'paused', 'completed', 'rejected', 'archived'] } },
       ['nodeId', 'status'], (root, input) => setNodeStatus(root, input.nodeId, input.status)],
     ['researchtrace_set_primary', 'Mark one method as primary among sibling methods. Archived or rejected methods cannot be primary.',
@@ -36,8 +37,10 @@ export function registerTreeTools(ctx) {
       (root, input) => getRetrievableTree(root, input)],
     ['researchtrace_get_node_detail', 'Read a node, lineage, children, and relevant runs, including archived historical nodes when explicitly named.',
       { nodeId: { type: 'string' } }, ['nodeId'], (root, input) => getNodeDetail(root, input.nodeId)],
-    ['researchtrace_restore_node', 'Restore an archived or rejected research route to active so it returns to default retrieval. Does not move files.',
-      { nodeId: { type: 'string' } }, ['nodeId'], (root, input) => restoreNode(root, input.nodeId)],
+    ['researchtrace_restore_node', 'Restore an archived or rejected research route to active and record the user reason. Does not move files.',
+      { nodeId: { type: 'string' }, rawUserText: { type: 'string' },
+        summary: { type: 'string' }, reason: { type: 'string' } }, ['nodeId', 'rawUserText'],
+      (root, input) => recordDecision(root, { ...input, type: 'reopen' })],
   ];
   const disposers = specs.map(([name, description, properties, required, operation]) =>
     ctx.tools.register(definition(name, description, properties, required, operation, ctx.workspaceRegistry)));

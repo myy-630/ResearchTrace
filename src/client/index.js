@@ -25,6 +25,7 @@ window.__ModuleLoader__.load({
         tree: 'Research tree', noNodes: 'No research nodes yet.', detail: 'Node detail',
         archive: 'Archive', restore: 'Restore', primary: 'Set primary',
         motivation: 'Motivation', summary: 'Summary', childRuns: 'Related runs',
+        decisions: 'Decisions',
       },
       zh: {
         title: 'ResearchTrace',
@@ -44,6 +45,7 @@ window.__ModuleLoader__.load({
         tree: '研究演化树', noNodes: '尚无研究节点。', detail: '节点详情',
         archive: '归档', restore: '恢复', primary: '设为主路线',
         motivation: '动机', summary: '摘要', childRuns: '相关实验',
+        decisions: '科研决策',
       },
     };
     const panelStyle = {
@@ -83,6 +85,8 @@ window.__ModuleLoader__.load({
       callApi('/api/researchtrace/runs', { action, workspaceId, runId }, signal);
     const callTree = (action, workspaceId, payload = {}, signal) =>
       callApi('/api/researchtrace/tree', { action, workspaceId, ...payload }, signal);
+    const callDecision = (action, workspaceId, payload = {}, signal) =>
+      callApi('/api/researchtrace/decisions', { action, workspaceId, ...payload }, signal);
 
     function facts(label, value) {
       return h('div', { style: { marginTop: '10px' } },
@@ -91,7 +95,7 @@ window.__ModuleLoader__.load({
           typeof value === 'string' ? value : JSON.stringify(value, null, 2)));
     }
 
-    function ResearchTraceBody({ sessionId, useSessions, useWorkspaces, t, useTabInfo, loadProject, loadRuns, callTree }) {
+    function ResearchTraceBody({ sessionId, useSessions, useWorkspaces, t, useTabInfo, loadProject, loadRuns, callTree, callDecision }) {
       const { tab } = useTabInfo();
       const cwd = useSessions((sessions) => sessions.byId[sessionId]?.cwd);
       const workspaceId = useWorkspaces((workspaces) => {
@@ -170,7 +174,13 @@ window.__ModuleLoader__.load({
         return () => { active = false; };
       }, [workspaceId, selectedNodeId, tree, callTree]);
 
-      const treeAction = (action, payload) => callTree(action, workspaceId, payload)
+      const treeAction = (action, payload) => (action === 'primary' || action === 'archive' || action === 'restore'
+        ? callDecision('record', workspaceId, { decision: {
+          nodeId: payload.nodeId,
+          type: action === 'primary' ? 'promote_to_primary' : action === 'restore' ? 'reopen' : 'archive',
+          rawUserText: `ResearchTrace Sidebar: ${action}`,
+          summary: `ResearchTrace Sidebar: ${action}`,
+        } }) : callTree(action, workspaceId, payload))
         .then(() => callTree('tree', workspaceId))
         .then(({ value }) => { setTree(value); setTreeError(null); })
         .catch((error) => setTreeError(String(error)));
@@ -233,14 +243,15 @@ window.__ModuleLoader__.load({
           h('p', { style: secondaryStyle }, nodeDetail.lineage.map((part) => part.name).join(' / ')),
           nodeDetail.node.motivation && facts(t('motivation'), nodeDetail.node.motivation),
           nodeDetail.node.summary && facts(t('summary'), nodeDetail.node.summary),
+          nodeDetail.decisions?.length > 0 && facts(t('decisions'), nodeDetail.decisions),
           nodeDetail.runs?.length > 0 && facts(t('childRuns'), nodeDetail.runs),
           nodeDetail.node.type === 'method' && !nodeDetail.node.isPrimary &&
             tree.nodes.find((node) => node.id === nodeDetail.node.id)?.defaultVisible &&
             h('button', { type: 'button', style: buttonStyle,
               onClick: () => treeAction('primary', { nodeId: nodeDetail.node.id }) }, t('primary')),
           nodeDetail.node.type !== 'run' && h('button', { type: 'button', style: buttonStyle,
-            onClick: () => treeAction(nodeDetail.node.status === 'archived' ? 'restore' : 'status',
-              { nodeId: nodeDetail.node.id, status: 'archived' }) },
+              onClick: () => treeAction(nodeDetail.node.status === 'archived' ? 'restore' : 'archive',
+              { nodeId: nodeDetail.node.id }) },
           t(nodeDetail.node.status === 'archived' ? 'restore' : 'archive'))),
         h('h3', { style: { margin: '20px 0 8px', fontSize: '13px' } }, t('runs')),
         runs.length ? h('ul', { style: { listStyle: 'none', padding: 0 } }, ...runs.map((run) =>
@@ -283,7 +294,7 @@ window.__ModuleLoader__.load({
           name: 'sidebar.right.pane.tab',
           key: ID,
           locale: NS,
-          inject: () => ({ loadProject: callProject, loadRuns, callTree }),
+          inject: () => ({ loadProject: callProject, loadRuns, callTree, callDecision }),
         }, ResearchTraceBody)), 'researchtrace: sidebar body');
       },
     };
