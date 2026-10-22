@@ -1,6 +1,6 @@
 const VERSION = 'researchtrace-claims-v1';
 
-function selectedModel(agent) {
+export function selectedModel(agent) {
   const header = agent?.session?.requestHeader?.()?.config;
   const options = agent?.options;
   const target = header?.provider && header?.model ? header : options;

@@ -28,6 +28,8 @@ window.__ModuleLoader__.load({
         decisions: 'Decisions',
         papers: 'Papers', noPapers: 'No paper documents parsed yet.', claims: 'Claims',
         noClaims: 'No claims extracted.', source: 'Source location',
+        trace: 'Trace evidence', traceLoading: 'Tracing claim…', noTrace: 'No run evidence yet.',
+        candidates: 'Candidate runs', confirm: 'Confirm this run', evidence: 'Evidence chain',
       },
       zh: {
         title: 'ResearchTrace',
@@ -50,6 +52,8 @@ window.__ModuleLoader__.load({
         decisions: '科研决策',
         papers: '论文文档', noPapers: '尚未解析论文文档。', claims: '论文主张',
         noClaims: '尚无已抽取主张。', source: '原文位置',
+        trace: '溯源证据', traceLoading: '正在匹配主张…', noTrace: '尚无实验溯源。',
+        candidates: '候选实验', confirm: '确认此实验', evidence: '证据链',
       },
     };
     const panelStyle = {
@@ -93,6 +97,8 @@ window.__ModuleLoader__.load({
       callApi('/api/researchtrace/decisions', { action, workspaceId, ...payload }, signal);
     const callPaper = (action, workspaceId, payload = {}, signal) =>
       callApi('/api/researchtrace/paper', { action, workspaceId, ...payload }, signal);
+    const callTrace = (action, workspaceId, payload = {}, signal) =>
+      callApi('/api/researchtrace/trace', { action, workspaceId, ...payload }, signal);
 
     function facts(label, value) {
       return h('div', { style: { marginTop: '10px' } },
@@ -101,7 +107,7 @@ window.__ModuleLoader__.load({
           typeof value === 'string' ? value : JSON.stringify(value, null, 2)));
     }
 
-    function ResearchTraceBody({ sessionId, useSessions, useWorkspaces, t, useTabInfo, loadProject, loadRuns, callTree, callDecision, callPaper }) {
+    function ResearchTraceBody({ sessionId, useSessions, useWorkspaces, t, useTabInfo, loadProject, loadRuns, callTree, callDecision, callPaper, callTrace }) {
       const { tab } = useTabInfo();
       const cwd = useSessions((sessions) => sessions.byId[sessionId]?.cwd);
       const workspaceId = useWorkspaces((workspaces) => {
@@ -121,6 +127,8 @@ window.__ModuleLoader__.load({
       const [documents, setDocuments] = React.useState([]);
       const [selectedDocumentId, setSelectedDocumentId] = React.useState(null);
       const [claims, setClaims] = React.useState([]);
+      const [selectedClaimId, setSelectedClaimId] = React.useState(null);
+      const [traceState, setTraceState] = React.useState({ kind: 'empty' });
 
       React.useEffect(() => {
         if (!workspaceId) {
@@ -205,6 +213,27 @@ window.__ModuleLoader__.load({
           .catch((error) => { if (active) setTreeError(String(error)); });
         return () => { active = false; };
       }, [workspaceId, selectedDocumentId, documents, callPaper]);
+
+      React.useEffect(() => {
+        if (!workspaceId || !selectedClaimId) { setTraceState({ kind: 'empty' }); return; }
+        let active = true;
+        setTraceState({ kind: 'loading' });
+        callTrace('get', workspaceId, { claimId: selectedClaimId })
+          .then(({ value }) => { if (active) setTraceState({ kind: 'ready', value }); })
+          .catch((error) => { if (active) setTraceState({ kind: 'error', message: String(error) }); });
+        return () => { active = false; };
+      }, [workspaceId, selectedClaimId, callTrace]);
+
+      const traceAction = (action, payload) => {
+        setTraceState({ kind: 'loading' });
+        callTrace(action, workspaceId, { claimId: selectedClaimId, ...payload })
+          .then(({ value }) => {
+            setTraceState({ kind: 'ready', value });
+            setClaims((items) => items.map((claim) => claim.id === selectedClaimId
+              ? { ...claim, status: value.claim.status } : claim));
+          })
+          .catch((error) => setTraceState({ kind: 'error', message: String(error) }));
+      };
 
       const treeAction = (action, payload) => (action === 'primary' || action === 'archive' || action === 'restore'
         ? callDecision('record', workspaceId, { decision: {
@@ -312,11 +341,37 @@ window.__ModuleLoader__.load({
           claims.length ? h('ul', { style: { listStyle: 'none', padding: 0 } },
             ...claims.map((claim) => h('li', { key: claim.id,
               style: { borderTop: '1px solid var(--dsw-alias-border-l3)', padding: '8px 0' } },
-              h('strong', null, `${claim.type} · ${claim.status}`),
+              h('button', { type: 'button', style: { ...buttonStyle, width: '100%', textAlign: 'left' },
+                onClick: () => setSelectedClaimId(claim.id) }, `${claim.type} · ${claim.status}`),
               h('p', { style: { margin: '4px 0' } }, claim.originalText),
               facts(t('source'), claim.sourceLocation),
               facts(t('summary'), claim.normalized))))
-            : h('p', { style: secondaryStyle }, t('noClaims'))));
+            : h('p', { style: secondaryStyle }, t('noClaims')),
+          selectedClaimId && h('section', { 'aria-label': t('trace'),
+            style: { borderTop: '1px solid var(--dsw-alias-border-l3)', marginTop: '10px', paddingTop: '8px' } },
+            h('strong', null, t('trace')),
+            h('button', { type: 'button', style: { ...buttonStyle, marginLeft: '8px' },
+              onClick: () => traceAction('trace', {}) }, t('trace')),
+            traceState.kind === 'loading' && h('p', null, t('traceLoading')),
+            traceState.kind === 'error' && h('p', { role: 'alert' }, traceState.message),
+            traceState.kind === 'ready' && h(React.Fragment, null,
+              h('p', null, traceState.value.claim.status),
+              traceState.value.candidates?.length > 0 && h(React.Fragment, null,
+                h('h4', null, t('candidates')),
+                ...traceState.value.candidates.map((candidate) => h('div', { key: candidate.runId,
+                  style: { borderTop: '1px solid var(--dsw-alias-border-l3)', padding: '6px 0' } },
+                  h('button', { type: 'button', style: buttonStyle,
+                    onClick: () => setSelectedRunId(candidate.runId) },
+                  `${candidate.name} · ${candidate.score.toFixed(1)}`),
+                  h('p', { style: secondaryStyle }, candidate.reasons.join('; ')),
+                  candidate.contradictions.length > 0 && h('p', { role: 'alert' },
+                    candidate.contradictions.join('; ')),
+                  traceState.value.claim.status === 'ambiguous' && h('button', { type: 'button',
+                    style: buttonStyle, onClick: () => traceAction('confirm', { runId: candidate.runId }) },
+                  t('confirm'))))),
+              traceState.value.evidenceChain
+                ? facts(t('evidence'), traceState.value.evidenceChain)
+                : h('p', { style: secondaryStyle }, t('noTrace'))))));
       return h('section', { style: panelStyle, 'aria-label': t('title') },
         h('h2', { style: { fontSize: '15px', margin: '0 0 12px' } }, t('title')),
         content);
@@ -343,7 +398,7 @@ window.__ModuleLoader__.load({
           name: 'sidebar.right.pane.tab',
           key: ID,
           locale: NS,
-          inject: () => ({ loadProject: callProject, loadRuns, callTree, callDecision, callPaper }),
+          inject: () => ({ loadProject: callProject, loadRuns, callTree, callDecision, callPaper, callTrace }),
         }, ResearchTraceBody)), 'researchtrace: sidebar body');
       },
     };
