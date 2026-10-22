@@ -36,6 +36,11 @@ function validateNormalized(type, value) {
   return value;
 }
 
+function numericTokenPresent(source, value) {
+  return (source.match(/(?<![\w.])-?\d+(?:\.\d+)?(?:e[+-]?\d+)?/gi) ?? [])
+    .some((token) => Math.abs(Number(token) - value) <= 1e-12);
+}
+
 export function validateExtractedClaims(rawClaims, segments) {
   if (!Array.isArray(rawClaims) || rawClaims.length > 200) throw new Error('Claim extraction must return an array of at most 200 claims');
   const byId = new Map(segments.map((item) => [item.id, item]));
@@ -50,7 +55,9 @@ export function validateExtractedClaims(rawClaims, segments) {
     }
     const quote = matchQuote(segment.text, raw.original_text);
     if (!quote) throw new Error(`Claim quote is absent from source segment: ${raw.segment_id}`);
-    const normalized = validateNormalized(raw.claim_type, raw.normalized);
+    const normalized = { ...validateNormalized(raw.claim_type, raw.normalized) };
+    if (raw.claim_type === 'result_comparison' && Number.isFinite(normalized.delta) &&
+        !numericTokenPresent(quote.text, normalized.delta)) normalized.delta = null;
     const key = `${raw.segment_id}:${raw.claim_type}:${sha256(quote.text)}`;
     if (dedupe.has(key)) continue;
     dedupe.add(key);

@@ -30,6 +30,8 @@ window.__ModuleLoader__.load({
         noClaims: 'No claims extracted.', source: 'Source location',
         trace: 'Trace evidence', traceLoading: 'Tracing claim…', noTrace: 'No run evidence yet.',
         candidates: 'Candidate runs', confirm: 'Confirm this run', evidence: 'Evidence chain',
+        audit: 'Audit report', runAudit: 'Run audit', noAudit: 'No audit report yet.',
+        findings: 'Findings', openClaim: 'View claim', openRun: 'View run',
       },
       zh: {
         title: 'ResearchTrace',
@@ -54,6 +56,8 @@ window.__ModuleLoader__.load({
         noClaims: '尚无已抽取主张。', source: '原文位置',
         trace: '溯源证据', traceLoading: '正在匹配主张…', noTrace: '尚无实验溯源。',
         candidates: '候选实验', confirm: '确认此实验', evidence: '证据链',
+        audit: '审计报告', runAudit: '运行审计', noAudit: '尚无审计报告。',
+        findings: '审计发现', openClaim: '查看主张', openRun: '查看实验',
       },
     };
     const panelStyle = {
@@ -99,6 +103,8 @@ window.__ModuleLoader__.load({
       callApi('/api/researchtrace/paper', { action, workspaceId, ...payload }, signal);
     const callTrace = (action, workspaceId, payload = {}, signal) =>
       callApi('/api/researchtrace/trace', { action, workspaceId, ...payload }, signal);
+    const callAudit = (action, workspaceId, payload = {}, signal) =>
+      callApi('/api/researchtrace/audit', { action, workspaceId, ...payload }, signal);
 
     function facts(label, value) {
       return h('div', { style: { marginTop: '10px' } },
@@ -107,7 +113,7 @@ window.__ModuleLoader__.load({
           typeof value === 'string' ? value : JSON.stringify(value, null, 2)));
     }
 
-    function ResearchTraceBody({ sessionId, useSessions, useWorkspaces, t, useTabInfo, loadProject, loadRuns, callTree, callDecision, callPaper, callTrace }) {
+    function ResearchTraceBody({ sessionId, useSessions, useWorkspaces, t, useTabInfo, loadProject, loadRuns, callTree, callDecision, callPaper, callTrace, callAudit }) {
       const { tab } = useTabInfo();
       const cwd = useSessions((sessions) => sessions.byId[sessionId]?.cwd);
       const workspaceId = useWorkspaces((workspaces) => {
@@ -129,6 +135,9 @@ window.__ModuleLoader__.load({
       const [claims, setClaims] = React.useState([]);
       const [selectedClaimId, setSelectedClaimId] = React.useState(null);
       const [traceState, setTraceState] = React.useState({ kind: 'empty' });
+      const [auditSessions, setAuditSessions] = React.useState([]);
+      const [auditState, setAuditState] = React.useState({ kind: 'empty' });
+      const [selectedFindingId, setSelectedFindingId] = React.useState(null);
 
       React.useEffect(() => {
         if (!workspaceId) {
@@ -224,6 +233,15 @@ window.__ModuleLoader__.load({
         return () => { active = false; };
       }, [workspaceId, selectedClaimId, callTrace]);
 
+      React.useEffect(() => {
+        if (!workspaceId || !selectedDocumentId) { setAuditSessions([]); return; }
+        let active = true;
+        callAudit('list', workspaceId, { documentId: selectedDocumentId })
+          .then(({ value }) => { if (active) setAuditSessions(value); })
+          .catch((error) => { if (active) setAuditState({ kind: 'error', message: String(error) }); });
+        return () => { active = false; };
+      }, [workspaceId, selectedDocumentId, callAudit]);
+
       const traceAction = (action, payload) => {
         setTraceState({ kind: 'loading' });
         callTrace(action, workspaceId, { claimId: selectedClaimId, ...payload })
@@ -234,6 +252,58 @@ window.__ModuleLoader__.load({
           })
           .catch((error) => setTraceState({ kind: 'error', message: String(error) }));
       };
+
+      const auditAction = (action, payload) => {
+        setAuditState({ kind: 'loading' });
+        callAudit(action, workspaceId, { documentId: selectedDocumentId, ...payload })
+          .then(({ value }) => {
+            setAuditState({ kind: 'ready', value });
+            setSelectedFindingId(null);
+            if (action === 'run') setAuditSessions((items) => [{ id: value.id,
+              counts: value.counts, createdAt: value.createdAt }, ...items]);
+          })
+          .catch((error) => setAuditState({ kind: 'error', message: String(error) }));
+      };
+
+      function renderAudit() {
+        const report = auditState.kind === 'ready' ? auditState.value : null;
+        const selected = report?.findings.find((item) => item.id === selectedFindingId);
+        return h('section', { 'aria-label': t('audit'),
+          style: { borderTop: '1px solid var(--dsw-alias-border-l3)', marginTop: '16px', paddingTop: '10px' } },
+          h('h3', { style: { fontSize: '13px' } }, t('audit')),
+          h('button', { type: 'button', style: buttonStyle,
+            onClick: () => auditAction('run', {}) }, t('runAudit')),
+          auditState.kind === 'loading' && h('p', null, t('loading')),
+          auditState.kind === 'error' && h('p', { role: 'alert' }, auditState.message),
+          auditSessions.length ? h('ul', { style: { listStyle: 'none', padding: 0 } },
+            ...auditSessions.slice(0, 10).map((session) => h('li', { key: session.id },
+              h('button', { type: 'button', style: { ...buttonStyle, width: '100%',
+                textAlign: 'left', marginTop: '5px' },
+              onClick: () => auditAction('report', { sessionId: session.id }) },
+              `${session.createdAt} · E${session.counts.error} W${session.counts.warning} I${session.counts.info}`))))
+            : h('p', { style: secondaryStyle }, t('noAudit')),
+          report && h(React.Fragment, null,
+            h('p', null, `E${report.counts.error} · W${report.counts.warning} · I${report.counts.info}`),
+            h('h4', null, t('findings')),
+            report.findings.length ? h('ul', { style: { listStyle: 'none', padding: 0 } },
+              ...report.findings.map((item) => h('li', { key: item.id },
+                h('button', { type: 'button', style: { ...buttonStyle, width: '100%',
+                  textAlign: 'left', marginTop: '5px' },
+                onClick: () => setSelectedFindingId(item.id) },
+                `${item.severity.toUpperCase()} · ${item.ruleId}: ${item.message}`))))
+              : h('p', { style: secondaryStyle }, '0'),
+            selected && h('div', { 'aria-label': selected.ruleId },
+              h('strong', null, `${selected.severity.toUpperCase()} · ${selected.ruleId}`),
+              h('p', null, selected.message),
+              facts(t('source'), selected.paperEvidence),
+              facts(t('evidence'), selected.experimentEvidence),
+              h('p', null, selected.recommendation),
+              selected.claimId && h('button', { type: 'button', style: buttonStyle,
+                onClick: () => setSelectedClaimId(selected.claimId) }, t('openClaim')),
+              selected.runId && h('button', { type: 'button', style: buttonStyle,
+                onClick: () => { setSelectedRunId(selected.runId); setSelectedNodeId(selected.runId); } },
+              t('openRun')))));
+      }
 
       const treeAction = (action, payload) => (action === 'primary' || action === 'archive' || action === 'restore'
         ? callDecision('record', workspaceId, { decision: {
@@ -371,7 +441,8 @@ window.__ModuleLoader__.load({
                   t('confirm'))))),
               traceState.value.evidenceChain
                 ? facts(t('evidence'), traceState.value.evidenceChain)
-                : h('p', { style: secondaryStyle }, t('noTrace'))))));
+                : h('p', { style: secondaryStyle }, t('noTrace'))))),
+        selectedDocumentId && renderAudit());
       return h('section', { style: panelStyle, 'aria-label': t('title') },
         h('h2', { style: { fontSize: '15px', margin: '0 0 12px' } }, t('title')),
         content);
@@ -398,7 +469,7 @@ window.__ModuleLoader__.load({
           name: 'sidebar.right.pane.tab',
           key: ID,
           locale: NS,
-          inject: () => ({ loadProject: callProject, loadRuns, callTree, callDecision, callPaper, callTrace }),
+          inject: () => ({ loadProject: callProject, loadRuns, callTree, callDecision, callPaper, callTrace, callAudit }),
         }, ResearchTraceBody)), 'researchtrace: sidebar body');
       },
     };

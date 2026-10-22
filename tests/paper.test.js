@@ -59,6 +59,9 @@ test('claim schema rejects hallucinated quotes and malformed normalized data', (
   assert.throws(() => validateExtractedClaims([{ ...valid[0], original_text: 'not in source' }], parsed.segments), /absent/);
   assert.throws(() => validateExtractedClaims([{ ...valid[0], normalized: { metric: 'AUPRC', target_value: '0.5614' } }], parsed.segments), /numeric/);
   assert.throws(() => validateExtractedClaims([{ ...valid[2], claim_type: 'unknown' }], parsed.segments), /Invalid claim/);
+  const derivedDelta = validateExtractedClaims([{ ...valid[0], normalized: {
+    ...valid[0].normalized, delta: 0.0124 } }], parsed.segments);
+  assert.equal(derivedDelta[0].normalized.delta, null);
 });
 
 test('document registry uses content hash cache and reparses changed claims with stable document id', async () => {
