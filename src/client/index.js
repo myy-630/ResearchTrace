@@ -195,8 +195,8 @@ window.__ModuleLoader__.load({
           gap: '8px', fontWeight: 700, marginBottom: '9px', fontSize: '13px' } },
         h('span', null, title), extra), body);
     }
-    function detailRow(label, value) {
-      return h('div', { style: { display: 'grid', gridTemplateColumns: '82px minmax(0, 1fr)',
+    function detailRow(label, value, compact = false) {
+      return h('div', { style: { display: 'grid', gridTemplateColumns: compact ? 'minmax(0, 1fr)' : '82px minmax(0, 1fr)',
         gap: '8px', padding: '3px 0' } },
         h('span', { style: secondaryStyle }, label),
         h('span', { style: { overflowWrap: 'anywhere' } }, value ?? '—'));
@@ -307,7 +307,8 @@ window.__ModuleLoader__.load({
       const [treeError, setTreeError] = React.useState(null);
       const [documents, setDocuments] = React.useState([]);
       const [documentsState, setDocumentsState] = React.useState('loading');
-      const [selectedDocumentId, setSelectedDocumentId] = React.useState(null);
+      const [selectedDetailDocumentId, setSelectedDetailDocumentId] = React.useState(null);
+      const [selectedAuditDocumentId, setSelectedAuditDocumentId] = React.useState(null);
       const [claims, setClaims] = React.useState([]);
       const [claimsState, setClaimsState] = React.useState('empty');
       const [selectedClaimId, setSelectedClaimId] = React.useState(null);
@@ -315,35 +316,38 @@ window.__ModuleLoader__.load({
       const [auditSessions, setAuditSessions] = React.useState([]);
       const [auditState, setAuditState] = React.useState({ kind: 'empty' });
       const [selectedFindingId, setSelectedFindingId] = React.useState(null);
-      const [view, setView] = React.useState('tree');
       const [treeOpen, setTreeOpen] = React.useState(true);
+      const [detailOpen, setDetailOpen] = React.useState(false);
+      const [auditOpen, setAuditOpen] = React.useState(false);
       const draft = useInput((input) => input.draft);
 
-      const selectDocument = (documentId) => {
-        setSelectedDocumentId(documentId || null);
+      const selectDetailDocument = (documentId) => {
+        setSelectedDetailDocumentId(documentId || null);
         setSelectedClaimId(null);
         setClaims([]);
         setClaimsState(documentId ? 'loading' : 'empty');
+      };
+
+      const selectAuditDocument = (documentId) => {
+        setSelectedAuditDocumentId(documentId || null);
         setAuditState({ kind: 'empty' });
         setSelectedFindingId(null);
       };
 
       const navigate = (destination, selection = {}) => {
-        setView(destination);
         if (destination === 'tree') setTreeOpen(true);
-        if (selection.nodeId || selection.runId) {
-          setSelectedDocumentId(null);
-          setSelectedClaimId(null);
-        }
-        if (selection.documentId || selection.claimId) {
+        if (destination === 'detail') setDetailOpen(true);
+        if (destination === 'audit') setAuditOpen(true);
+        if (destination === 'detail' && (selection.documentId || selection.claimId)) {
           setSelectedNodeId(null);
           setSelectedRunId(null);
         }
         if (selection.nodeId) setSelectedNodeId(selection.nodeId);
         if (selection.runId) setSelectedRunId(selection.runId);
-        if (selection.documentId && selection.documentId !== selectedDocumentId) {
-          selectDocument(selection.documentId);
-        }
+        if (destination === 'detail' && selection.documentId &&
+          selection.documentId !== selectedDetailDocumentId) selectDetailDocument(selection.documentId);
+        if (destination === 'audit' && selection.documentId &&
+          selection.documentId !== selectedAuditDocumentId) selectAuditDocument(selection.documentId);
         if (selection.claimId) setSelectedClaimId(selection.claimId);
         if (selection.auditId) auditAction('report', { sessionId: selection.auditId });
       };
@@ -441,14 +445,14 @@ window.__ModuleLoader__.load({
       }, [workspaceId, state.kind, state.value?.initialized, callPaper]);
 
       React.useEffect(() => {
-        if (!workspaceId || !selectedDocumentId) { setClaims([]); setClaimsState('empty'); return; }
+        if (!workspaceId || !selectedDetailDocumentId) { setClaims([]); setClaimsState('empty'); return; }
         let active = true;
         setClaimsState((current) => current === 'ready' ? current : 'loading');
-        callPaper('claims', workspaceId, { documentId: selectedDocumentId })
+        callPaper('claims', workspaceId, { documentId: selectedDetailDocumentId })
           .then(({ value }) => { if (active) { setClaims(value); setClaimsState('ready'); } })
           .catch(() => { if (active) setClaimsState('error'); });
         return () => { active = false; };
-      }, [workspaceId, selectedDocumentId, documents, callPaper]);
+      }, [workspaceId, selectedDetailDocumentId, documents, callPaper]);
 
       React.useEffect(() => {
         if (!workspaceId || !selectedClaimId) { setTraceState({ kind: 'empty' }); return; }
@@ -465,7 +469,7 @@ window.__ModuleLoader__.load({
           setAuditSessions([]); return;
         }
         let active = true;
-        callAudit('list', workspaceId, { documentId: selectedDocumentId ?? undefined })
+        callAudit('list', workspaceId, { documentId: selectedAuditDocumentId ?? undefined })
           .then(({ value }) => {
             if (!active) return;
             setAuditSessions(value);
@@ -473,7 +477,7 @@ window.__ModuleLoader__.load({
           })
           .catch((error) => { if (active) setAuditState({ kind: 'error', message: String(error) }); });
         return () => { active = false; };
-      }, [workspaceId, state.kind, state.value?.initialized, selectedDocumentId, documents, callAudit]);
+      }, [workspaceId, state.kind, state.value?.initialized, selectedAuditDocumentId, documents, callAudit]);
 
       const traceAction = (action, payload) => {
         setTraceState({ kind: 'loading' });
@@ -488,9 +492,12 @@ window.__ModuleLoader__.load({
 
       const auditAction = (action, payload) => {
         setAuditState({ kind: 'loading' });
-        callAudit(action, workspaceId, { documentId: selectedDocumentId, ...payload })
+        callAudit(action, workspaceId, { documentId: selectedAuditDocumentId, ...payload })
           .then(({ value }) => {
             setAuditState({ kind: 'ready', value });
+            if (value.documentId && value.documentId !== selectedAuditDocumentId) {
+              setSelectedAuditDocumentId(value.documentId);
+            }
             setSelectedFindingId(null);
             if (action === 'run') setAuditSessions((items) => [{ id: value.id,
               counts: value.counts, createdAt: value.createdAt }, ...items]);
@@ -506,9 +513,11 @@ window.__ModuleLoader__.load({
       };
 
       const currentAuditReport = auditState.kind === 'ready' &&
-        auditState.value.documentId === selectedDocumentId ? auditState.value : null;
+        auditState.value.documentId === selectedAuditDocumentId ? auditState.value : null;
       const auditFindings = currentAuditReport?.findings ?? [];
-      const adoptedRunIds = new Set(view === 'audit' ? currentAuditReport?.usedRunIds ?? [] : []);
+      const adoptedRunIds = new Set(auditOpen ? currentAuditReport?.usedRunIds ?? [] : []);
+      const paneCount = Number(treeOpen) + Number(detailOpen) + Number(auditOpen);
+      const threePanes = paneCount === 3;
       const adoptedPathIds = new Set();
       const treeNodesById = new Map(tree.nodes.map((node) => [node.id, node]));
       for (const runId of adoptedRunIds) {
@@ -527,7 +536,7 @@ window.__ModuleLoader__.load({
 
       function renderAudit() {
         const report = auditState.kind === 'ready' ? auditState.value : null;
-        const matchingReport = report?.documentId === selectedDocumentId ? report : null;
+        const matchingReport = report?.documentId === selectedAuditDocumentId ? report : null;
         const groups = [
           ['error', t('severeIssues'), '#d73535', '#fff2f2'],
           ['warning', t('warnings'), '#b97500', '#fff8e9'],
@@ -586,18 +595,18 @@ window.__ModuleLoader__.load({
           h('p', { style: { ...secondaryStyle, margin: '3px 0 14px' } }, t('paperIntro')),
           card(t('selectPaper'), h(React.Fragment, null,
             documentsState === 'error' && h('p', { role: 'alert' }, t('documentError')),
-            documents.length ? h('select', { 'aria-label': t('papers'), value: selectedDocumentId ?? '',
-              onChange: (event) => selectDocument(event.target.value),
+            documents.length ? h('select', { 'aria-label': t('papers'), value: selectedAuditDocumentId ?? '',
+              onChange: (event) => selectAuditDocument(event.target.value),
               style: { ...buttonStyle, width: '100%', marginBottom: '10px', overflow: 'hidden' } },
               h('option', { value: '' }, t('selectPaper')),
               ...documents.map((document) => h('option', { key: document.id, value: document.id },
                 document.path.split('/').at(-1)))) : h('p', { style: secondaryStyle }, t('noPapers')),
             h('button', { type: 'button', style: blueButtonStyle,
-              disabled: !selectedDocumentId || auditState.kind === 'loading',
+              disabled: !selectedAuditDocumentId || auditState.kind === 'loading',
               onClick: () => auditAction('run', {}) }, `▶  ${t('runAudit')}`))),
           auditState.kind === 'loading' && h('p', null, t('loading')),
           auditState.kind === 'error' && h('p', { role: 'alert' }, auditState.message),
-          selectedDocumentId && !matchingReport && auditState.kind === 'empty' &&
+          selectedAuditDocumentId && !matchingReport && auditState.kind === 'empty' &&
             h('p', { style: secondaryStyle }, t('noAudit')),
           matchingReport && h(React.Fragment, null,
             h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
@@ -611,7 +620,7 @@ window.__ModuleLoader__.load({
                 `${t('warnings')} ${matchingReport.counts.warning} · ` +
                 `${t('verifiedItems')} ${matchingReport.counts.info}`),
               Object.keys(ruleCounts).length > 0 && h('p', { style: { ...secondaryStyle,
-                margin: '6px 0 0', fontSize: '11px' } },
+                margin: '6px 0 0', fontSize: '11px', overflowWrap: 'anywhere' } },
                 `${t('ruleGroups')}: ${Object.entries(ruleCounts).map(([rule, count]) =>
                   `${rule} ×${count}`).join(' · ')}`))),
             ...groups.map(findingGroup),
@@ -637,7 +646,7 @@ window.__ModuleLoader__.load({
         .catch((error) => setTreeError(String(error)));
 
       function renderNode(node, depth = 0) {
-        const compact = treeOpen && view !== 'tree';
+        const compact = paneCount > 1;
         const adopted = node.type === 'run' && adoptedRunIds.has(node.id);
         const hasChildren = node.children.length > 0;
         const open = expanded[node.id] ?? (adoptedPathIds.has(node.id) ||
@@ -650,21 +659,21 @@ window.__ModuleLoader__.load({
           ? node.children.filter((child) => child.type === 'run').length : 0;
         const nodeIcon = node.type === 'run'
           ? icon(runStatus === 'succeeded' ? 'check' : runStatus === 'failed' ? 'x' : 'method',
-            runStatus === 'succeeded' ? '#1eaa68' : nodeColor, 18)
+            runStatus === 'succeeded' ? '#1eaa68' : nodeColor, threePanes ? 14 : 18)
           : node.isPrimary ? h('span', { style: { color: '#2f6df6', fontSize: '20px', lineHeight: 1 } }, '★')
-            : icon(typeIcons[node.type], nodeColor, 19);
+            : icon(typeIcons[node.type], nodeColor, threePanes ? 15 : 19);
         return h('li', { key: node.id, style: { listStyle: 'none', margin: '4px 0' } },
-          h('div', { style: { display: 'flex', alignItems: 'center', gap: '5px',
+          h('div', { style: { display: 'flex', alignItems: 'center', gap: threePanes ? '2px' : '5px',
             opacity: node.defaultVisible ? 1 : 0.65,
             background: selectedNodeId === node.id ? '#edf4ff' : 'transparent',
             boxShadow: adopted ? 'inset 3px 0 #1eaa68' : undefined,
             borderRadius: '8px', padding: '5px 4px' } },
             hasChildren ? h('button', { type: 'button', style: { border: 'none', background: 'transparent',
-              color: '#334155', padding: '1px', width: '19px', cursor: 'pointer',
+              color: '#334155', padding: '1px', width: threePanes ? '12px' : '19px', cursor: 'pointer',
               flex: 'none', font: 'inherit', fontSize: '13px' },
               'aria-label': `${open ? 'Collapse' : 'Expand'} ${node.name}`,
               onClick: () => setExpanded((value) => ({ ...value, [node.id]: !open })) }, open ? '⌄' : '›')
-              : h('span', { style: { width: '19px', flex: 'none' } }, ''),
+              : h('span', { style: { width: threePanes ? '12px' : '19px', flex: 'none' } }, ''),
             nodeIcon,
             h('button', { type: 'button', style: { border: 'none', padding: '2px 0', minWidth: 0,
               flex: 1, color: node.isPrimary ? '#2563eb' : 'var(--dsw-alias-label-primary)',
@@ -694,7 +703,8 @@ window.__ModuleLoader__.load({
                   : issueCount > 0 ? h('span', { title: `${issueCount} ${t('findings')}`,
                     style: { color: '#ab6c00', background: '#fff7e8', borderRadius: '6px',
                       padding: '1px 6px', fontSize: '11px' } }, `⚠ ${issueCount}`) : null),
-          hasChildren && open && h('ul', { style: { margin: '0 0 0 15px', padding: '0 0 0 8px',
+          hasChildren && open && h('ul', { style: { margin: threePanes ? '0 0 0 5px' : '0 0 0 15px',
+            padding: threePanes ? '0 0 0 4px' : '0 0 0 8px',
             borderLeft: '1px dashed var(--dsw-alias-border-l3)' } },
             ...node.children.map((child) => renderNode(child, depth + 1))));
       }
@@ -720,11 +730,11 @@ window.__ModuleLoader__.load({
         return h('section', { 'aria-label': t('tree') },
           h('button', { type: 'button', style: { ...blueButtonStyle, margin: '9px 0 18px' },
             onClick: () => {
-              if (!selectedDocumentId && documents.length) selectDocument(documents[0].id);
-              setView('audit');
+              if (!selectedAuditDocumentId && documents.length) selectAuditDocument(documents[0].id);
+              setAuditOpen(true);
             } }, `${t('auditPaper')}  →`),
           h('h3', { style: { margin: '8px 0 13px', fontSize: '15px', fontWeight: 750 } }, t('tree')),
-          view === 'audit' && currentAuditReport && h('p', { style: {
+          auditOpen && currentAuditReport && h('p', { style: {
             margin: '-5px 0 11px', fontSize: '11px', color: '#2867df' } },
           Array.isArray(currentAuditReport.usedRunIds)
             ? `${t('auditUsedRuns')}: ${currentAuditReport.usedRunIds.length}`
@@ -758,12 +768,12 @@ window.__ModuleLoader__.load({
               style: { color: '#f0a020', fontSize: '21px' } }, '★')),
           node.summary && h('p', { style: { ...secondaryStyle, margin: '5px 0 14px 34px' } }, node.summary),
           card(t('basicInfo'), h('div', null,
-            detailRow(t('status'), statusPill(t, currentStatus)),
-            detailRow(t('createdAt'), formatTime(node.createdAt)),
-            parent && detailRow(t('parentNode'), `${t(typeKeys[parent.type])} · ${parent.name}`),
+            detailRow(t('status'), statusPill(t, currentStatus), threePanes),
+            detailRow(t('createdAt'), formatTime(node.createdAt), threePanes),
+            parent && detailRow(t('parentNode'), `${t(typeKeys[parent.type])} · ${parent.name}`, threePanes),
             node.type === 'experiment_group' && node.tags?.length > 0 &&
-              detailRow(t('variables'), node.tags.join(' · ')),
-            node.type === 'run' && run?.seed != null && detailRow('Seed', String(run.seed)))),
+              detailRow(t('variables'), node.tags.join(' · '), threePanes),
+            node.type === 'run' && run?.seed != null && detailRow('Seed', String(run.seed), threePanes))),
           node.motivation && card(t('motivation'), h('p', { style: { margin: 0 } }, node.motivation)),
           (latestDecision?.summary || node.summary) && card(t('summary'),
             h('p', { style: { margin: 0, padding: '9px 11px', borderRadius: '7px',
@@ -821,8 +831,8 @@ window.__ModuleLoader__.load({
       }
 
       function renderDocumentDetail() {
-        if (!selectedDocumentId) return null;
-        const document = documents.find((item) => item.id === selectedDocumentId);
+        if (!selectedDetailDocumentId) return null;
+        const document = documents.find((item) => item.id === selectedDetailDocumentId);
         return h('section', { 'aria-label': t('claims') },
           h('div', { style: { display: 'flex', gap: '9px', alignItems: 'center',
             marginTop: '15px' } }, icon('document', '#172033', 24),
@@ -877,14 +887,16 @@ window.__ModuleLoader__.load({
         h('h2', { style: { fontSize: '18px', fontWeight: 750, margin: '0 0 12px' } }, t('title')),
         content);
 
-      const showRight = view !== 'tree';
-      const split = treeOpen && showRight;
       const closeTree = () => {
-        if (showRight) setTreeOpen(false);
+        if (detailOpen || auditOpen) setTreeOpen(false);
         else tab.actions.close();
       };
-      const closeRight = () => {
-        if (treeOpen) setView('tree');
+      const closeDetail = () => {
+        if (treeOpen || auditOpen) setDetailOpen(false);
+        else tab.actions.close();
+      };
+      const closeAudit = () => {
+        if (treeOpen || detailOpen) setAuditOpen(false);
         else tab.actions.close();
       };
       const header = (title, closeLabel, close) => h('header', { style: {
@@ -898,26 +910,36 @@ window.__ModuleLoader__.load({
             flex: 'none', color: 'var(--dsw-alias-label-secondary)' } },
         icon('x', 'currentColor', 17)));
       return h('div', { style: panelStyle, 'aria-label': t('title') },
-        treeOpen && h('section', { style: { ...paneStyle,
-          flexBasis: split ? '50%' : '100%',
-          borderRight: split ? '1px solid var(--dsw-alias-border-l3)' : 'none' },
+        treeOpen && h('section', { key: 'tree-pane', style: { ...paneStyle,
+          padding: threePanes ? '9px 7px 24px' : paneStyle.padding,
+          borderRight: detailOpen || auditOpen ? '1px solid var(--dsw-alias-border-l3)' : 'none' },
         'aria-label': `${t('title')} · ${t('tree')}` },
         header(t('title'), t('closeTree'), closeTree),
         renderTreePage()),
-        showRight && h('section', { key: `${view}:${selectedNodeId ?? ''}:${selectedDocumentId ?? ''}:${selectedClaimId ?? ''}`,
+        detailOpen && h('section', { key: selectedNodeId ? `detail:node:${selectedNodeId}`
+          : `detail:document:${selectedDetailDocumentId ?? ''}:${selectedClaimId ?? ''}`,
           style: { ...paneStyle,
-          flexBasis: split ? '50%' : '100%' },
-        'aria-label': `${t('title')} · ${view === 'audit' ? t('auditPaper') : t('detail')}` },
-        header(view === 'audit' ? t('auditPaper') : t('detail'),
-          t(view === 'audit' ? 'closeAudit' : 'closeDetail'), closeRight),
+          padding: threePanes ? '9px 7px 24px' : paneStyle.padding,
+          borderRight: auditOpen ? '1px solid var(--dsw-alias-border-l3)' : 'none' },
+        'aria-label': `${t('title')} · ${t('detail')}` },
+        header(t('detail'), t('closeDetail'), closeDetail),
         h('button', { type: 'button', style: { ...buttonStyle,
           padding: '5px 10px', display: 'inline-flex', alignItems: 'center', gap: '6px' },
-          onClick: () => navigate('tree') }, icon('arrow', 'currentColor', 14), t('backTree')),
-        view === 'detail' && h('section', { 'aria-label': t('detail') },
-          !selectedNodeId && !selectedDocumentId && h('p', { style: secondaryStyle }, t('noSelection')),
+          onClick: () => { setDetailOpen(false); setTreeOpen(true); } },
+        icon('arrow', 'currentColor', 14), t('backTree')),
+        h('section', { 'aria-label': t('detail') },
+          !selectedNodeId && !selectedDetailDocumentId && h('p', { style: secondaryStyle }, t('noSelection')),
           selectedNodeId && renderNodeDetail(),
-          !selectedNodeId && selectedDocumentId && renderDocumentDetail()),
-        view === 'audit' && renderAudit()));
+          !selectedNodeId && selectedDetailDocumentId && renderDocumentDetail())),
+        auditOpen && h('section', { key: `audit:${selectedAuditDocumentId ?? ''}`,
+          style: { ...paneStyle, padding: threePanes ? '9px 7px 24px' : paneStyle.padding },
+          'aria-label': `${t('title')} · ${t('auditPaper')}` },
+          header(t('auditPaper'), t('closeAudit'), closeAudit),
+          h('button', { type: 'button', style: { ...buttonStyle,
+            padding: '5px 10px', display: 'inline-flex', alignItems: 'center', gap: '6px' },
+            onClick: () => { setAuditOpen(false); setTreeOpen(true); } },
+          icon('arrow', 'currentColor', 14), t('backTree')),
+          renderAudit()));
     }
 
     return {

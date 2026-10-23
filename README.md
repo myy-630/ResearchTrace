@@ -11,10 +11,11 @@ requirements are in [docs/RESEARCHTRACE_SPEC.md](docs/RESEARCHTRACE_SPEC.md).
    new, click **Initialize project**.
 4. ResearchTrace opens directly to the research tree. Expand experiment groups
    to see individual runs. Clicking a node opens its detail beside the tree;
-   **Audit paper** opens the audit beside the tree. Each pane has its own close
-   button. Closing one expands the other; **Back to research tree** closes the
-   right pane and restores the tree if needed. A ResearchTrace tool result in
-   Chat can also open its related node, run, paper, Claim, or report there.
+   **Audit paper** opens a separate audit pane. The tree, detail, and audit can
+   remain open as three side-by-side panes. Each pane has its own close button;
+   closing one expands the others. **Back to research tree** closes only the
+   pane containing that button and restores the tree if needed. A ResearchTrace
+   tool result in Chat can also open its related node, run, paper, Claim, or report there.
    After an audit, runs actually used as evidence in that report are marked
    **Used as paper evidence** in the tree. Reports created before this marker
    was added need to be run again to show the saved run list.
