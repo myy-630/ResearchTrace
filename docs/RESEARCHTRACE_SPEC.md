@@ -722,6 +722,7 @@ ERROR — PARAMETER_MISMATCH
 - 规则版本
 - error / warning / info 数量
 - findings
+- 本次审计实际采用的 run ID 清单（包含已确认的主张证据，以及确定性核对中采用的对照 run 和完整多 seed 运行组）
 
 报告既存数据库，也可导出本地 Markdown / JSON 到 `.researchtrace/reports/`。
 
@@ -747,6 +748,7 @@ ResearchTrace 的所有 UI 均位于 DeepSeek Harness 的右侧 Sidebar。
 - 展开/折叠
 - 当前运行状态
 - error/warning badge（若相关）
+- 审计报告打开时，在左侧树中标注本次审计实际采用的每个 run；标注来自该审计会话保存的清单
 
 用户点击节点进入“节点详情”。
 
@@ -1051,6 +1053,7 @@ my-research-project/
 - error_count
 - warning_count
 - info_count
+- used_run_ids_json（本次审计采用的 run ID 快照；旧报告可为空）
 
 ### 18.10 audit_findings
 

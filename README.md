@@ -15,6 +15,9 @@ requirements are in [docs/RESEARCHTRACE_SPEC.md](docs/RESEARCHTRACE_SPEC.md).
    button. Closing one expands the other; **Back to research tree** closes the
    right pane and restores the tree if needed. A ResearchTrace tool result in
    Chat can also open its related node, run, paper, Claim, or report there.
+   After an audit, runs actually used as evidence in that report are marked
+   **Used as paper evidence** in the tree. Reports created before this marker
+   was added need to be run again to show the saved run list.
 
 The plugin stores its own data in `<workspace>/.researchtrace/`, including the
 SQLite database, run snapshots, document cache, and audit reports. It has no

@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 const migrations = [
   {
@@ -160,6 +160,14 @@ const migrations = [
     sql: `
       ALTER TABLE documents ADD COLUMN parser_version TEXT;
       UPDATE projects SET schema_version = 4;
+    `,
+  },
+  {
+    version: 5,
+    sql: `
+      ALTER TABLE audit_sessions ADD COLUMN used_run_ids_json TEXT
+        CHECK (used_run_ids_json IS NULL OR json_valid(used_run_ids_json));
+      UPDATE projects SET schema_version = 5;
     `,
   },
 ];

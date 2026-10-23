@@ -25,6 +25,7 @@ test('golden incorrect paper finds exactly the deterministic A/B/C/D/F/G/H error
     ];
     assert.deepEqual(actual.sort(), expected.sort());
     assert.deepEqual(report.counts, { error: 5, warning: 2, info: 0 });
+    assert.deepEqual(report.usedRunIds, Object.values(fixture.runIds).sort());
     assert.equal(report.findings.every((item) => item.claimId && item.runId &&
       item.paperEvidence.quote && item.experimentEvidence && item.recommendation), true);
     assert.equal(report.findings.find((item) => item.ruleId === 'INCOMPARABLE_PROTOCOL')
@@ -33,13 +34,38 @@ test('golden incorrect paper finds exactly the deterministic A/B/C/D/F/G/H error
       .experimentEvidence.sampleStd - 0.01) < 1e-12);
     assert.ok(existsSync(report.exportPaths.json));
     assert.ok(existsSync(report.exportPaths.markdown));
-    assert.equal(JSON.parse(readFileSync(report.exportPaths.json)).findings.length, expected.length);
+    const exported = JSON.parse(readFileSync(report.exportPaths.json));
+    assert.equal(exported.findings.length, expected.length);
+    assert.deepEqual(exported.usedRunIds, report.usedRunIds);
     assert.match(readFileSync(report.exportPaths.markdown, 'utf8'), /RESULT_MISMATCH/);
     assert.deepEqual(getAuditReport(root, report.id).findings.map((item) => item.ruleId),
       report.findings.map((item) => item.ruleId));
+    assert.deepEqual(getAuditReport(root, report.id).usedRunIds, report.usedRunIds);
     assert.equal(listAuditReports(root, fixture.documentId)[0].id, report.id);
     assert.deepEqual(runAudit(root, fixture.documentId).findings.map((item) => item.ruleId),
       report.findings.map((item) => item.ruleId));
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('audit snapshots a cited run even when it has no findings', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'researchtrace-audit-used-run-'));
+  try {
+    const fixture = await seedAuditScenario(root);
+    const { db } = openProjectDatabase(root);
+    try {
+      db.prepare(`DELETE FROM claims WHERE id NOT IN (?)`).run(fixture.claimIds[5]);
+    } finally { db.close(); }
+    const first = runAudit(root, fixture.documentId);
+    assert.deepEqual(first.counts, { error: 0, warning: 0, info: 0 });
+    assert.deepEqual(first.usedRunIds, [fixture.runIds.stats1]);
+    const { db: update } = openProjectDatabase(root);
+    try {
+      update.prepare('UPDATE claim_run_links SET run_node_id = ? WHERE claim_id = ?')
+        .run(fixture.runIds.stats2, fixture.claimIds[5]);
+    } finally { update.close(); }
+    const second = runAudit(root, fixture.documentId);
+    assert.deepEqual(second.usedRunIds, [fixture.runIds.stats2]);
+    assert.deepEqual(getAuditReport(root, first.id).usedRunIds, [fixture.runIds.stats1]);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

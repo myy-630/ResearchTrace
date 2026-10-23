@@ -55,6 +55,8 @@ window.__ModuleLoader__.load({
         cancelledStatus: 'Cancelled', interruptedStatus: 'Interrupted',
         closeTree: 'Close research tree', closeDetail: 'Close details',
         closeAudit: 'Close paper audit',
+        adoptedInPaper: 'Used as paper evidence', auditUsedRuns: 'Runs used in this audit',
+        olderAuditNoRunList: 'This older report has no saved run list. Run the audit again to mark runs.',
       },
       zh: {
         title: 'ResearchTrace',
@@ -104,6 +106,8 @@ window.__ModuleLoader__.load({
         cancelledStatus: '已取消', interruptedStatus: '已中断',
         closeTree: '关闭演化树', closeDetail: '关闭详情',
         closeAudit: '关闭论文审计',
+        adoptedInPaper: '论文采用', auditUsedRuns: '本次审计采用的运行',
+        olderAuditNoRunList: '旧审计报告未保存采用的运行清单；重新运行审计后可标注。',
       },
     };
     const panelStyle = {
@@ -501,7 +505,19 @@ window.__ModuleLoader__.load({
         if (!inputActions.insertText(text, insertion)) inputActions.setDraft(`${draft ?? ''}${text}`);
       };
 
-      const auditFindings = auditState.kind === 'ready' ? auditState.value.findings : [];
+      const currentAuditReport = auditState.kind === 'ready' &&
+        auditState.value.documentId === selectedDocumentId ? auditState.value : null;
+      const auditFindings = currentAuditReport?.findings ?? [];
+      const adoptedRunIds = new Set(view === 'audit' ? currentAuditReport?.usedRunIds ?? [] : []);
+      const adoptedPathIds = new Set();
+      const treeNodesById = new Map(tree.nodes.map((node) => [node.id, node]));
+      for (const runId of adoptedRunIds) {
+        let node = treeNodesById.get(runId);
+        while (node && !adoptedPathIds.has(node.id)) {
+          adoptedPathIds.add(node.id);
+          node = treeNodesById.get(node.parentId);
+        }
+      }
       const findingsForNode = (node) => {
         const ids = new Set();
         const visit = (item) => { ids.add(item.id); item.children.forEach(visit); };
@@ -622,8 +638,10 @@ window.__ModuleLoader__.load({
 
       function renderNode(node, depth = 0) {
         const compact = treeOpen && view !== 'tree';
+        const adopted = node.type === 'run' && adoptedRunIds.has(node.id);
         const hasChildren = node.children.length > 0;
-        const open = expanded[node.id] ?? (node.type !== 'experiment_group' || node.children.length <= 5);
+        const open = expanded[node.id] ?? (adoptedPathIds.has(node.id) ||
+          node.type !== 'experiment_group' || node.children.length <= 5);
         const runStatus = node.executionStatus ?? runs.find((run) => run.id === node.id)?.status;
         const nodeColor = node.status === 'archived' ? '#8b93a0' : node.isPrimary ? '#2f6df6'
           : node.type === 'run' && runStatus === 'failed' ? '#e43d3d' : '#556171';
@@ -639,6 +657,7 @@ window.__ModuleLoader__.load({
           h('div', { style: { display: 'flex', alignItems: 'center', gap: '5px',
             opacity: node.defaultVisible ? 1 : 0.65,
             background: selectedNodeId === node.id ? '#edf4ff' : 'transparent',
+            boxShadow: adopted ? 'inset 3px 0 #1eaa68' : undefined,
             borderRadius: '8px', padding: '5px 4px' } },
             hasChildren ? h('button', { type: 'button', style: { border: 'none', background: 'transparent',
               color: '#334155', padding: '1px', width: '19px', cursor: 'pointer',
@@ -650,8 +669,8 @@ window.__ModuleLoader__.load({
             h('button', { type: 'button', style: { border: 'none', padding: '2px 0', minWidth: 0,
               flex: 1, color: node.isPrimary ? '#2563eb' : 'var(--dsw-alias-label-primary)',
               textAlign: 'left', background: 'transparent', cursor: 'pointer', font: 'inherit' },
-              'aria-label': `${t(typeKeys[node.type])} ${node.name}`,
-              title: `${t(typeKeys[node.type])} · ${node.name}`,
+              'aria-label': `${t(typeKeys[node.type])} ${node.name}${adopted ? ` · ${t('adoptedInPaper')}` : ''}`,
+              title: `${t(typeKeys[node.type])} · ${node.name}${adopted ? ` · ${t('adoptedInPaper')}` : ''}`,
               onClick: () => navigate('detail', { nodeId: node.id,
                 runId: node.type === 'run' ? node.id : undefined }) },
               h('span', { style: { display: 'block', overflow: 'hidden',
@@ -661,7 +680,11 @@ window.__ModuleLoader__.load({
                 lineHeight: compact ? 1.25 : undefined,
                 fontSize: compact ? '12px' : undefined,
                 fontWeight: node.isPrimary ? 650 : 450 } },
-                `${t(typeKeys[node.type])} · ${node.name}`)),
+                `${t(typeKeys[node.type])} · ${node.name}`),
+              adopted && h('span', { style: { display: 'inline-block', marginTop: '3px',
+                padding: '1px 5px', borderRadius: '5px', background: '#e9f8ef',
+                color: '#138456', fontWeight: 700, fontSize: '10px', lineHeight: 1.35 } },
+              t('adoptedInPaper'))),
             node.type === 'run' ? statusPill(t, runStatus ?? 'created')
               : node.status === 'archived' || node.status === 'rejected' || node.status === 'paused'
                 ? statusPill(t, node.status)
@@ -701,6 +724,11 @@ window.__ModuleLoader__.load({
               setView('audit');
             } }, `${t('auditPaper')}  →`),
           h('h3', { style: { margin: '8px 0 13px', fontSize: '15px', fontWeight: 750 } }, t('tree')),
+          view === 'audit' && currentAuditReport && h('p', { style: {
+            margin: '-5px 0 11px', fontSize: '11px', color: '#2867df' } },
+          Array.isArray(currentAuditReport.usedRunIds)
+            ? `${t('auditUsedRuns')}: ${currentAuditReport.usedRunIds.length}`
+            : t('olderAuditNoRunList')),
           treeState === 'loading' && h('p', null, t('loading')),
           treeError && h('p', { role: 'alert' }, treeError),
           tree.roots.length ? h('ul', { style: { margin: 0, padding: 0 } },

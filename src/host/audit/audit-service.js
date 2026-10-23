@@ -102,6 +102,7 @@ function inspectClaim(root, claim, links, rows, nodes, tolerance) {
   const findings = [];
   const confirmed = links.filter((link) => link.status === 'confirmed');
   const run = confirmed.length === 1 ? getRunDetail(root, confirmed[0].run_node_id) : null;
+  const usedRunIds = new Set(run ? [run.id] : []);
   const facts = claim.normalized;
   if (claim.type === 'result_comparison' && !run) {
     const candidates = links.filter((link) => link.status === 'candidate')
@@ -124,7 +125,7 @@ function inspectClaim(root, claim, links, rows, nodes, tolerance) {
       'Result claim has no confirmed run evidence', claim, null,
       { candidateRunIds: candidates.map((link) => link.run_node_id) },
       'Trace the claim and confirm the intended run before relying on this result.'));
-    return findings;
+    return { findings, usedRunIds: [...usedRunIds] };
   }
   if (claim.type === 'statistical' && !run) {
     findings.push(finding('TRACE_INCOMPLETE', 'warning',
@@ -132,9 +133,9 @@ function inspectClaim(root, claim, links, rows, nodes, tolerance) {
       { candidateRunIds: links.filter((link) => link.status === 'candidate')
         .map((link) => link.run_node_id), reportedRepetitions: facts.repetitions ?? null },
       'Trace the statistic to an intended run and verify the complete seed cohort.'));
-    return findings;
+    return { findings, usedRunIds: [...usedRunIds] };
   }
-  if (!run) return findings;
+  if (!run) return { findings, usedRunIds: [] };
 
   // A. The recorded metric is the sole numerical source of truth.
   if (claim.type === 'result_comparison') {
@@ -211,6 +212,7 @@ function inspectClaim(root, claim, links, rows, nodes, tolerance) {
         claim, run, { runIds: cohort.map((item) => item.id), seeds: [...bySeed.keys()] },
         'Select an exact seed cohort for the paper statistic.'));
     } else {
+      for (const item of cohort) usedRunIds.add(item.id);
       const values = cohort.map((item) => metricValue(item, facts.metric));
       const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
       const std = values.length > 1
@@ -250,6 +252,7 @@ function inspectClaim(root, claim, links, rows, nodes, tolerance) {
       { baselineMethod: facts.baseline_method, baselineValue: facts.baseline_value },
       'Link the exact baseline run and verify protocol comparability.'));
     else {
+      usedRunIds.add(baseline.id);
       const differences = [];
       for (const [label, a, b] of [
         ['dataset', run.dataset?.name, baseline.dataset?.name],
@@ -289,13 +292,14 @@ function inspectClaim(root, claim, links, rows, nodes, tolerance) {
         untrackedFiles: run.git.untrackedFiles },
       'Save the diff and untracked inputs, or rerun from a clean commit.'));
   }
-  return findings;
+  return { findings, usedRunIds: [...usedRunIds] };
 }
 
 function reportFromRows(session, rows) {
   return { id: session.id, documentId: session.document_id, documentHash: session.document_hash,
     rulesVersion: session.rules_version, createdAt: session.created_at,
     counts: { error: session.error_count, warning: session.warning_count, info: session.info_count },
+    usedRunIds: session.used_run_ids_json == null ? null : JSON.parse(session.used_run_ids_json),
     findings: rows.map((row) => ({ id: row.id, ruleId: row.rule_id, severity: row.severity,
       message: row.message, claimId: row.claim_id, runId: row.run_node_id,
       paperEvidence: JSON.parse(row.paper_evidence_json),
@@ -337,9 +341,12 @@ export function runAudit(rootPath, documentId, options = {}) {
       .all(documentId).map(claimFromRow);
     const nodes = nodeIndex(db, project.id);
     const rows = loadRunRows(db, project.id);
+    const usedRunIds = new Set();
     const findings = claims.flatMap((claim) => {
       const links = db.prepare('SELECT * FROM claim_run_links WHERE claim_id = ?').all(claim.id);
-      return inspectClaim(root, claim, links, rows, nodes, options.tolerance ?? 0);
+      const inspected = inspectClaim(root, claim, links, rows, nodes, options.tolerance ?? 0);
+      for (const runId of inspected.usedRunIds) usedRunIds.add(runId);
+      return inspected.findings;
     });
     const counts = { error: findings.filter((item) => item.severity === 'error').length,
       warning: findings.filter((item) => item.severity === 'warning').length,
@@ -349,9 +356,9 @@ export function runAudit(rootPath, documentId, options = {}) {
     db.exec('BEGIN IMMEDIATE');
     try {
       db.prepare(`INSERT INTO audit_sessions (id,document_id,document_hash,rules_version,created_at,
-        error_count,warning_count,info_count) VALUES (?,?,?,?,?,?,?,?)`)
+        error_count,warning_count,info_count,used_run_ids_json) VALUES (?,?,?,?,?,?,?,?,?)`)
         .run(id, documentId, document.content_hash, AUDIT_RULES_VERSION, createdAt,
-          counts.error, counts.warning, counts.info);
+          counts.error, counts.warning, counts.info, JSON.stringify([...usedRunIds].sort()));
       const insert = db.prepare(`INSERT INTO audit_findings (id,audit_session_id,rule_id,severity,message,
         claim_id,run_node_id,paper_evidence_json,experiment_evidence_json,recommendation)
         VALUES (?,?,?,?,?,?,?,?,?,?)`);
@@ -361,7 +368,7 @@ export function runAudit(rootPath, documentId, options = {}) {
       db.exec('COMMIT');
     } catch (error) { db.exec('ROLLBACK'); throw error; }
     const report = { id, documentId, documentHash: document.content_hash,
-      rulesVersion: AUDIT_RULES_VERSION, createdAt, counts, findings };
+      rulesVersion: AUDIT_RULES_VERSION, createdAt, counts, usedRunIds: [...usedRunIds].sort(), findings };
     const directory = join(dataDir, 'reports');
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     const jsonPath = join(directory, `audit-${id}.json`);
@@ -369,7 +376,8 @@ export function runAudit(rootPath, documentId, options = {}) {
     writeFileSync(jsonPath, JSON.stringify(report, null, 2), { mode: 0o600 });
     writeFileSync(mdPath, [`# ResearchTrace audit ${id}`, '', `Document: ${document.path}`,
       `Hash: ${document.content_hash}`, `Rules: ${AUDIT_RULES_VERSION}`,
-      `Errors: ${counts.error}; Warnings: ${counts.warning}; Info: ${counts.info}`, '',
+      `Errors: ${counts.error}; Warnings: ${counts.warning}; Info: ${counts.info}`,
+      `Used runs: ${report.usedRunIds.join(', ') || '—'}`, '',
       ...findings.flatMap((item) => [`## ${item.severity.toUpperCase()} ${item.ruleId}`, '',
         item.message, '', `Claim: ${item.claimId ?? '—'}; Run: ${item.runId ?? '—'}`,
         `Recommendation: ${item.recommendation}`, ''])].join('\n'), { mode: 0o600 });
