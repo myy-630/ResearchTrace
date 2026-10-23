@@ -16,11 +16,14 @@ function rowToNode(row) {
   return { id: row.id, projectId: row.project_id, type: row.type, parentId: row.parent_id,
     name: row.name, status: row.status, isPrimary: Boolean(row.is_primary),
     motivation: row.motivation, summary: row.summary, tags: JSON.parse(row.tags_json),
-    createdAt: row.created_at, updatedAt: row.updated_at, archivedAt: row.archived_at };
+    createdAt: row.created_at, updatedAt: row.updated_at, archivedAt: row.archived_at,
+    executionStatus: row.execution_status ?? null };
 }
 
 function allNodes(db, projectId) {
-  return db.prepare('SELECT * FROM worktree_nodes WHERE project_id = ? ORDER BY created_at, id')
+  return db.prepare(`SELECT n.*, d.execution_status FROM worktree_nodes n
+    LEFT JOIN run_details d ON d.node_id = n.id
+    WHERE n.project_id = ? ORDER BY n.created_at, n.id`)
     .all(projectId).map(rowToNode);
 }
 
@@ -230,7 +233,16 @@ export function getNodeDetail(rootPath, id) {
       summary: row.summary, reason: row.reason, alternativeRoute: row.alternative_route,
       reopenCondition: row.reopen_condition, relatedRunIds: JSON.parse(row.related_run_ids_json),
       createdAt: row.created_at }));
-    return { node, lineage, children, runs, decisions,
+    const relatedClaims = db.prepare(`WITH RECURSIVE descendants(id) AS (
+        SELECT id FROM worktree_nodes WHERE id = ?
+        UNION ALL SELECT n.id FROM worktree_nodes n JOIN descendants d ON n.parent_id = d.id
+      ) SELECT DISTINCT c.id, c.document_id AS documentId, c.original_text AS originalText,
+        c.status, p.path AS documentPath
+      FROM claim_run_links l JOIN claims c ON c.id = l.claim_id
+      JOIN documents p ON p.id = c.document_id
+      WHERE l.status = 'confirmed' AND l.run_node_id IN (SELECT id FROM descendants)
+      ORDER BY c.created_at DESC LIMIT 30`).all(id);
+    return { node, lineage, children, runs, decisions, relatedClaims,
       run: node.type === 'run' ? getRunDetail(rootPath, id) : null };
   } finally { db.close(); }
 }
