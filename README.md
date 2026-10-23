@@ -10,9 +10,10 @@ requirements are in [docs/RESEARCHTRACE_SPEC.md](docs/RESEARCHTRACE_SPEC.md).
 3. In the Sidebar start panel, choose **ResearchTrace**. If the workspace is
    new, click **Initialize project**.
 4. ResearchTrace opens directly to the research tree. Expand experiment groups
-   to see individual runs, click a node to open its detail, or use **Audit paper**
-   at the top to select a paper and review its report. The **Back to research
-   tree** button returns from detail or audit. A ResearchTrace tool result in
+   to see individual runs. Clicking a node opens its detail beside the tree;
+   **Audit paper** opens the audit beside the tree. Each pane has its own close
+   button. Closing one expands the other; **Back to research tree** closes the
+   right pane and restores the tree if needed. A ResearchTrace tool result in
    Chat can also open its related node, run, paper, Claim, or report there.
 
 The plugin stores its own data in `<workspace>/.researchtrace/`, including the

@@ -53,6 +53,8 @@ window.__ModuleLoader__.load({
         rejectedStatus: 'Rejected', archivedStatus: 'Archived', createdStatus: 'Created',
         runningStatus: 'Running', succeededStatus: 'Succeeded', failedStatus: 'Failed',
         cancelledStatus: 'Cancelled', interruptedStatus: 'Interrupted',
+        closeTree: 'Close research tree', closeDetail: 'Close details',
+        closeAudit: 'Close paper audit',
       },
       zh: {
         title: 'ResearchTrace',
@@ -100,14 +102,29 @@ window.__ModuleLoader__.load({
         rejectedStatus: '已否决', archivedStatus: '已归档', createdStatus: '已创建',
         runningStatus: '运行中', succeededStatus: '成功', failedStatus: '失败',
         cancelledStatus: '已取消', interruptedStatus: '已中断',
+        closeTree: '关闭演化树', closeDetail: '关闭详情',
+        closeAudit: '关闭论文审计',
       },
     };
     const panelStyle = {
-      padding: '18px',
+      display: 'flex',
+      width: '100%',
+      height: '100%',
+      minHeight: 0,
+      boxSizing: 'border-box',
+      overflow: 'hidden',
       color: 'var(--dsw-alias-label-primary)',
       fontFamily: 'inherit',
       fontSize: '14px',
       lineHeight: 1.55,
+    };
+    const paneStyle = {
+      boxSizing: 'border-box',
+      flex: '1 1 0',
+      minWidth: 0,
+      minHeight: 0,
+      overflowY: 'auto',
+      padding: '12px 14px 24px',
     };
     const secondaryStyle = { color: 'var(--dsw-alias-label-secondary)' };
     const buttonStyle = {
@@ -295,6 +312,7 @@ window.__ModuleLoader__.load({
       const [auditState, setAuditState] = React.useState({ kind: 'empty' });
       const [selectedFindingId, setSelectedFindingId] = React.useState(null);
       const [view, setView] = React.useState('tree');
+      const [treeOpen, setTreeOpen] = React.useState(true);
       const draft = useInput((input) => input.draft);
 
       const selectDocument = (documentId) => {
@@ -308,6 +326,7 @@ window.__ModuleLoader__.load({
 
       const navigate = (destination, selection = {}) => {
         setView(destination);
+        if (destination === 'tree') setTreeOpen(true);
         if (selection.nodeId || selection.runId) {
           setSelectedDocumentId(null);
           setSelectedClaimId(null);
@@ -602,6 +621,7 @@ window.__ModuleLoader__.load({
         .catch((error) => setTreeError(String(error)));
 
       function renderNode(node, depth = 0) {
+        const compact = treeOpen && view !== 'tree';
         const hasChildren = node.children.length > 0;
         const open = expanded[node.id] ?? (node.type !== 'experiment_group' || node.children.length <= 5);
         const runStatus = node.executionStatus ?? runs.find((run) => run.id === node.id)?.status;
@@ -631,10 +651,16 @@ window.__ModuleLoader__.load({
               flex: 1, color: node.isPrimary ? '#2563eb' : 'var(--dsw-alias-label-primary)',
               textAlign: 'left', background: 'transparent', cursor: 'pointer', font: 'inherit' },
               'aria-label': `${t(typeKeys[node.type])} ${node.name}`,
+              title: `${t(typeKeys[node.type])} · ${node.name}`,
               onClick: () => navigate('detail', { nodeId: node.id,
                 runId: node.type === 'run' ? node.id : undefined }) },
-              h('span', { style: { display: 'block', overflow: 'hidden', textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap', fontWeight: node.isPrimary ? 650 : 450 } },
+              h('span', { style: { display: 'block', overflow: 'hidden',
+                textOverflow: compact ? undefined : 'ellipsis',
+                whiteSpace: compact ? 'normal' : 'nowrap',
+                overflowWrap: compact ? 'anywhere' : undefined,
+                lineHeight: compact ? 1.25 : undefined,
+                fontSize: compact ? '12px' : undefined,
+                fontWeight: node.isPrimary ? 650 : 450 } },
                 `${t(typeKeys[node.type])} · ${node.name}`)),
             node.type === 'run' ? statusPill(t, runStatus ?? 'created')
               : node.status === 'archived' || node.status === 'rejected' || node.status === 'paused'
@@ -818,19 +844,52 @@ window.__ModuleLoader__.load({
       else if (!state.value.initialized) content = h(React.Fragment, null,
         h('p', { style: secondaryStyle }, t('empty')),
         h('button', { type: 'button', style: buttonStyle, onClick: initialize }, t('initialize')));
-      else content = h(React.Fragment, null,
-        view !== 'tree' && h('button', { type: 'button', style: { ...buttonStyle,
+      if (content) return h('section', { style: { ...panelStyle, display: 'block',
+        padding: '18px', overflowY: 'auto' }, 'aria-label': t('title') },
+        h('h2', { style: { fontSize: '18px', fontWeight: 750, margin: '0 0 12px' } }, t('title')),
+        content);
+
+      const showRight = view !== 'tree';
+      const split = treeOpen && showRight;
+      const closeTree = () => {
+        if (showRight) setTreeOpen(false);
+        else tab.actions.close();
+      };
+      const closeRight = () => {
+        if (treeOpen) setView('tree');
+        else tab.actions.close();
+      };
+      const header = (title, closeLabel, close) => h('header', { style: {
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        gap: '8px', marginBottom: '10px' } },
+        h('h2', { style: { fontSize: '17px', fontWeight: 750, margin: 0,
+          minWidth: 0, overflowWrap: 'anywhere' } }, title),
+        h('button', { type: 'button', onClick: close, 'aria-label': closeLabel,
+          title: closeLabel, style: { ...buttonStyle, border: 'none', padding: '4px',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            flex: 'none', color: 'var(--dsw-alias-label-secondary)' } },
+        icon('x', 'currentColor', 17)));
+      return h('div', { style: panelStyle, 'aria-label': t('title') },
+        treeOpen && h('section', { style: { ...paneStyle,
+          flexBasis: split ? '50%' : '100%',
+          borderRight: split ? '1px solid var(--dsw-alias-border-l3)' : 'none' },
+        'aria-label': `${t('title')} · ${t('tree')}` },
+        header(t('title'), t('closeTree'), closeTree),
+        renderTreePage()),
+        showRight && h('section', { key: `${view}:${selectedNodeId ?? ''}:${selectedDocumentId ?? ''}:${selectedClaimId ?? ''}`,
+          style: { ...paneStyle,
+          flexBasis: split ? '50%' : '100%' },
+        'aria-label': `${t('title')} · ${view === 'audit' ? t('auditPaper') : t('detail')}` },
+        header(view === 'audit' ? t('auditPaper') : t('detail'),
+          t(view === 'audit' ? 'closeAudit' : 'closeDetail'), closeRight),
+        h('button', { type: 'button', style: { ...buttonStyle,
           padding: '5px 10px', display: 'inline-flex', alignItems: 'center', gap: '6px' },
-          onClick: () => setView('tree') }, icon('arrow', 'currentColor', 14), t('backTree')),
-        view === 'tree' && renderTreePage(),
+          onClick: () => navigate('tree') }, icon('arrow', 'currentColor', 14), t('backTree')),
         view === 'detail' && h('section', { 'aria-label': t('detail') },
           !selectedNodeId && !selectedDocumentId && h('p', { style: secondaryStyle }, t('noSelection')),
           selectedNodeId && renderNodeDetail(),
           !selectedNodeId && selectedDocumentId && renderDocumentDetail()),
-        view === 'audit' && renderAudit());
-      return h('section', { style: panelStyle, 'aria-label': t('title') },
-        h('h2', { style: { fontSize: '18px', fontWeight: 750, margin: '0 0 12px' } }, t('title')),
-        content);
+        view === 'audit' && renderAudit()));
     }
 
     return {
