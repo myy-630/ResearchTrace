@@ -1,42 +1,35 @@
 # ResearchTrace
 
-ResearchTrace is a local DeepSeek Harness plugin. The product and technical
-requirements are in [docs/RESEARCHTRACE_SPEC.md](docs/RESEARCHTRACE_SPEC.md).
+ResearchTrace is a local DeepSeek Harness plugin for tracking research experiments, decisions, and paper evidence. It records run provenance in the workspace and can audit paper claims against saved runs. The product and technical requirements are in [the specification](docs/RESEARCHTRACE_SPEC.md).
 
-## Open it in Harness
+## Requirements
 
-1. Select or create a Harness workspace and start a conversation in it.
-2. Click the right Sidebar button in the top right of the conversation.
-3. In the Sidebar start panel, choose **ResearchTrace**. If the workspace is
-   new, click **Initialize project**.
-4. ResearchTrace opens directly to the research tree. Expand experiment groups
-   to see individual runs. Clicking a node opens its detail beside the tree;
-   **Audit paper** opens a separate audit pane. The tree, detail, and audit can
-   remain open as three side-by-side panes. Each pane has its own close button;
-   closing one expands the others. **Back to research tree** closes only the
-   pane containing that button and restores the tree if needed. A ResearchTrace
-   tool result in Chat can also open its related node, run, paper, Claim, or report there.
-   After an audit, runs actually used as evidence in that report are marked
-   **Used as paper evidence** in the tree. Reports created before this marker
-   was added need to be run again to show the saved run list.
+- Node.js 24 or newer
+- DeepSeek Harness with the `dsh` command available
 
-The plugin stores its own data in `<workspace>/.researchtrace/`, including the
-SQLite database, run snapshots, document cache, and audit reports. It has no
-separate ResearchTrace web page or server.
-
-## Local test profile
-
-The already installed `researchtrace-dev` test profile links to this checkout.
-On this machine, run:
+## Install from source
 
 ```sh
-cd /Users/myy/Documents/ResearchTrace
-DSH_HOME="$PWD/.dsh-test-home" /Users/myy/.npm/_npx/b86ed90107c62dab/node_modules/.bin/dsh \
-  --profile researchtrace-dev --patch fixtures/m1-browse-picker.patch.yml --no-open --port 0
+git clone https://github.com/myy-630/ResearchTrace.git
+cd ResearchTrace
+dsh plugin --profile web add .
+dsh web
 ```
 
-Open the `dsh web:` URL printed by the command. The test profile is local to
-this checkout. The repository currently has no GitHub remote.
+In a Harness workspace, open the right Sidebar, choose **ResearchTrace**, and select **Initialize project** if the workspace is new. ResearchTrace opens the research tree; selecting a node opens its detail, and **Audit paper** opens an audit pane. Tree, detail, and audit panes can stay open side by side.
 
-Run all automated tests with `npm test`. The larger repeatable local scenario
-is described in [fixtures/full-scenario/README.md](fixtures/full-scenario/README.md).
+ResearchTrace stores its own data in `<workspace>/.researchtrace/`, including the SQLite database, run snapshots, document cache, and audit reports. It has no separate web page or server.
+
+## Development
+
+Run the automated tests with:
+
+```sh
+npm test
+```
+
+The repeatable local scenario is described in [fixtures/full-scenario/README.md](fixtures/full-scenario/README.md). The repository also includes sample workspaces and papers under `fixtures/`.
+
+## License
+
+MIT. See [LICENSE](LICENSE). Vendored dependencies retain their own licenses in `vendor/`.
